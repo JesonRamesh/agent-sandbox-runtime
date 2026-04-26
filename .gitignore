@@ -1,0 +1,20 @@
+# Build artifacts
+bpf/*.bpf.o
+bpf/vmlinux.h
+daemon/agentd
+cli/agentctl/agentctl
+
+# Vendored upstream — Tetragon reference, do not commit
+vendor/tetragon/
+
+# Vagrant per-machine state (SSH keys, box IDs, etc.)
+.vagrant/
+*-VBoxHeadless-*.log
+
+# Editor cruft
+.DS_Store
+*.swp
+*~
+
+# macOS-only DMG that snuck in early
+*.dmg

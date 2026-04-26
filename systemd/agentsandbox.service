@@ -1,0 +1,35 @@
+[Unit]
+Description=Agent Sandbox Runtime daemon (eBPF guardrails for AI agents)
+Documentation=https://github.com/cisco-agentsandbox/runtime
+After=network.target sys-fs-bpf.mount
+Wants=sys-fs-bpf.mount
+
+[Service]
+Type=simple
+ExecStartPre=/bin/mkdir -p /sys/fs/bpf/agentsandbox
+ExecStartPre=/bin/mkdir -p /sys/fs/cgroup/agentsandbox
+ExecStart=/usr/local/bin/agentd \
+    --bpf-dir=/usr/lib/agentsandbox/bpf \
+    --ui-dir=/usr/share/agentsandbox/ui \
+    --policy-dir=/etc/agentsandbox/policies \
+    --listen=0.0.0.0:9000
+# Listening on 0.0.0.0 (not 127.0.0.1) so VirtualBox NAT port-
+# forwarding can reach us from the host. The VM is treated as
+# single-tenant; harden by binding to a private network interface
+# if you ever expose the VM to multiple users.
+Restart=on-failure
+RestartSec=2
+
+# Privileges. We need CAP_BPF/CAP_PERFMON to load programs and
+# CAP_SYS_ADMIN for cgroup write + LSM attach. Drop everything else.
+AmbientCapabilities=CAP_BPF CAP_PERFMON CAP_SYS_ADMIN CAP_NET_ADMIN
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/sys/fs/bpf/agentsandbox /sys/fs/cgroup/agentsandbox /var/log/agentsandbox
+ProtectHome=yes
+PrivateTmp=yes
+LockPersonality=yes
+RestrictRealtime=yes
+
+[Install]
+WantedBy=multi-user.target

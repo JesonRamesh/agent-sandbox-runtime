@@ -1,0 +1,21 @@
+# Strict policy for LLM agents that should only talk to OpenAI/Anthropic
+# and only read/write under /tmp/agent-workdir.
+id: 2
+name: strict-llm-agent
+mode: enforce
+allowed_hosts:
+  - api.openai.com:443
+  - api.anthropic.com:443
+allowed_paths:
+  - /tmp/agent-workdir
+  - /usr/lib/python3
+  - /usr/lib/x86_64-linux-gnu
+  - /etc/ssl/certs
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps:
+  - CAP_SYS_ADMIN
+  - CAP_SYS_MODULE
+  - CAP_SYS_PTRACE
+  - CAP_NET_RAW
+  - CAP_BPF

@@ -1,0 +1,10 @@
+# Default observability policy. Audit-only — emits events for every
+# syscall on the four pillars but never blocks. Good baseline to see
+# what an agent does before tightening to enforce mode.
+id: 1
+name: default-audit
+mode: audit
+allowed_hosts: []
+allowed_paths: []
+allowed_bins:  []
+forbidden_caps: []

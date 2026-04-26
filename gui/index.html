@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Agent Sandbox Runtime</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Agent Sandbox Runtime</h1>
+    <span id="status" class="pill pill-unknown">connecting…</span>
+  </header>
+
+  <nav>
+    <button class="tab active" data-tab="events">Live events</button>
+    <button class="tab"        data-tab="policies">Policies</button>
+    <button class="tab"        data-tab="bindings">Bindings</button>
+  </nav>
+
+  <main>
+    <section id="tab-events" class="tab-panel active">
+      <div class="toolbar">
+        <label>Filter: <input id="event-filter" placeholder="kind, comm, path…"></label>
+        <label><input id="show-allow" type="checkbox" checked> show allow</label>
+        <label><input id="show-audit" type="checkbox" checked> show audit</label>
+        <label><input id="show-deny"  type="checkbox" checked> show deny</label>
+        <button id="clear-events">Clear</button>
+      </div>
+      <table id="events-table">
+        <thead>
+          <tr>
+            <th>Time</th><th>Verdict</th><th>Kind</th>
+            <th>PID</th><th>Comm</th><th>Detail</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+
+    <section id="tab-policies" class="tab-panel">
+      <div class="toolbar">
+        <button id="new-policy">+ New policy</button>
+      </div>
+      <div id="policy-list"></div>
+      <dialog id="policy-editor">
+        <form method="dialog">
+          <h2 id="editor-title">Policy</h2>
+          <label>ID <input name="id" type="number" min="1" required></label>
+          <label>Name <input name="name" required></label>
+          <label>Mode
+            <select name="mode">
+              <option value="audit">audit (observe only)</option>
+              <option value="enforce">enforce (kernel deny)</option>
+            </select>
+          </label>
+          <label>Allowed hosts (one per line; <code>host:port</code> or <code>cidr</code>)
+            <textarea name="allowed_hosts" rows="4"></textarea>
+          </label>
+          <label>Allowed paths (prefix match)
+            <textarea name="allowed_paths" rows="4"></textarea>
+          </label>
+          <label>Allowed binaries
+            <textarea name="allowed_bins" rows="3"></textarea>
+          </label>
+          <label>Forbidden capabilities (e.g. CAP_SYS_ADMIN)
+            <textarea name="forbidden_caps" rows="2"></textarea>
+          </label>
+          <menu>
+            <button value="cancel">Cancel</button>
+            <button id="save-policy" value="save">Save</button>
+          </menu>
+        </form>
+      </dialog>
+    </section>
+
+    <section id="tab-bindings" class="tab-panel">
+      <p>Bind a cgroup ID to a policy. Cgroup IDs come from
+        <code>stat -c %i /sys/fs/cgroup/&lt;path&gt;</code>
+        or from the <code>cgroup_id</code> column in the events tab.</p>
+      <form id="bind-form">
+        <label>Cgroup ID <input name="cgroup_id" type="number" required></label>
+        <label>Policy ID <input name="policy_id" type="number" required></label>
+        <button type="submit">Bind</button>
+      </form>
+      <p class="hint">Setting policy ID to 0 unbinds (cgroup becomes
+        unmanaged → all syscalls allowed, no events emitted).</p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

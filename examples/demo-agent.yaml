@@ -1,0 +1,20 @@
+# Sample agent manifest, consumed by `agentctl run`.
+# `agentctl run` will:
+#   1. mkdir /sys/fs/cgroup/agentsandbox/<name>/
+#   2. PUT /api/policies/<deterministic-id> with these rules
+#   3. POST /api/bindings { cgroup_id, policy_id }
+#   4. join the cgroup, exec command
+name: demo-agent
+command: ["python3", "-c", "import urllib.request; print(urllib.request.urlopen('https://api.openai.com').status)"]
+mode: enforce
+allowed_hosts:
+  - api.openai.com:443
+allowed_paths:
+  - /tmp
+  - /usr/lib/python3
+  - /etc/ssl/certs
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps:
+  - CAP_SYS_ADMIN
+  - CAP_BPF
