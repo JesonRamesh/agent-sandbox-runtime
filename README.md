@@ -39,7 +39,7 @@ syscall is blocked regardless of what the agent was told to do.
 
 ## Quickstart
 
-### Already on Ubuntu 24.04? Run it directly — no VM needed.
+### Already on Ubuntu 24.04? Run it directly — no VM needed (not recommended).
 
 ```bash
 bash setup-vm.sh all          # deps + build + install + enable service
