@@ -1,0 +1,27 @@
+# Build outputs
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Generated bpf2go output
+internal/bpf/*_bpfel.go
+internal/bpf/*_bpfeb.go
+internal/bpf/*_bpfel.o
+internal/bpf/*_bpfeb.o
+
+# Go
+vendor/
+*.cover
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Local env
+.env
+.env.local

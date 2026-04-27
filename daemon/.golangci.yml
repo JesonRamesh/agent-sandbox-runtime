@@ -1,0 +1,37 @@
+run:
+  timeout: 5m
+  go: "1.22"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+    - revive
+    - bodyclose
+    - gosec
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+  gosec:
+    excludes:
+      # G204: subprocess launched with variable — required by daemon's exec.Cmd
+      - G204
+
+issues:
+  exclude-dirs:
+    - internal/bpf/programs
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec

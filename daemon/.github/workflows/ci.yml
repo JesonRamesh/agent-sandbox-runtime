@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main, "Harrish/*"]
+  pull_request:
+
+jobs:
+  build-test-lint:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: daemon
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false   # go.sum may not exist on first push; let `go mod tidy` create it.
+
+      # eBPF C compilation lives in the sibling bpf/ directory on Mehul's
+      # branch; this CI does not build .bpf.o files. The daemon loads
+      # them at runtime, so a pure go build/test/lint is enough here.
+
+      - name: tidy modules
+        run: go mod tidy
+
+      - name: build
+        run: make build
+
+      - name: test (non-privileged unit tests only)
+        run: make test
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59.1
+          working-directory: daemon
+          args: --timeout=5m
+
+      # Integration tests require privileged kernel access (cgroup writes,
+      # BPF program loads, BPF LSM enabled). Teammates run them locally on
+      # the Vagrant VM.

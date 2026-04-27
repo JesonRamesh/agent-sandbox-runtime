@@ -1,0 +1,58 @@
+[Unit]
+Description=Agent Sandbox Daemon (eBPF + cgroup-v2 network policy enforcement)
+Documentation=https://github.com/JesonRamesh/agent-sandbox-runtime
+# bpffs must be mounted before the daemon pins maps under /sys/fs/bpf/agent-sandbox/.
+# install.sh both mounts it now and writes an /etc/fstab line that sys-fs-bpf.mount
+# generates on subsequent boots. RequiresMountsFor lets systemd auto-order us after.
+After=network.target sys-fs-bpf.mount
+RequiresMountsFor=/sys/fs/bpf /sys/fs/cgroup
+
+[Service]
+# Type=simple (not notify): we don't currently call sd_notify(READY=1).
+# If we add it later, switch to Type=notify so systemd waits for the
+# IPC socket before considering the unit started.
+Type=simple
+
+User=agent-sandbox
+Group=agent-sandbox
+
+# Capability set is the brief §2 minimum: BPF for prog/map syscalls,
+# NET_ADMIN for cgroup-attached programs, SYS_ADMIN for cgroup writes
+# and pinning, SYS_RESOURCE to raise RLIMIT_MEMLOCK on older kernels.
+# Bounding == Ambient: ambient is what's actually inheritable to the
+# binary on a non-root exec; bounding caps what could ever be regained.
+AmbientCapabilities=CAP_BPF CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_RESOURCE
+CapabilityBoundingSet=CAP_BPF CAP_NET_ADMIN CAP_SYS_ADMIN CAP_SYS_RESOURCE
+
+ExecStart=/usr/local/bin/agent-sandbox-daemon --log-json --log-dir=/var/log/agent-sandbox
+
+Restart=on-failure
+RestartSec=5s
+
+StandardOutput=journal
+StandardError=journal
+
+# --- Hardening ---
+# NoNewPrivileges blocks setuid/file-cap escalation from any child the
+# daemon spawns; the agent processes inherit this, which is desired.
+NoNewPrivileges=true
+# ProtectSystem=strict makes /, /usr, /boot, /etc read-only; we whitelist
+# below the few paths the daemon legitimately writes.
+ProtectSystem=strict
+ProtectHome=true
+# /run for the IPC socket; /var/log/agent-sandbox for per-agent log files;
+# /sys/fs/cgroup for cgroup-v2 directory creation; /sys/fs/bpf for map pinning.
+ReadWritePaths=/var/log/agent-sandbox /run /sys/fs/cgroup /sys/fs/bpf
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+ProtectKernelLogs=false
+# NB: MemoryDenyWriteExecute is intentionally NOT set. The eBPF JIT
+# allocates W+X kernel pages on program load; with MDWE enabled the
+# load fails with EPERM. Same reason we don't set ProtectKernelModules
+# (BPF prog load goes through the bpf() syscall, not module load, so
+# that one is actually safe to enable — TODO confirm on Ubuntu 22.04
+# HWE; see CAVEATS).
+
+[Install]
+WantedBy=multi-user.target

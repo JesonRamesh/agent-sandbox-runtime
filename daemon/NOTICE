@@ -1,0 +1,13 @@
+Agent Sandbox Runtime — Sandbox Daemon (P2)
+Copyright 2026 The Agent Sandbox Authors.
+
+This product includes software developed by Isovalent, Inc. and the Tetragon
+project (https://github.com/cilium/tetragon), licensed under the Apache License,
+Version 2.0.
+
+Specifically, the eBPF C programs under internal/bpf/programs/ are vendored
+verbatim (or with minimal adaptation) from Tetragon. Each vendored file
+preserves its original copyright header and includes a vendoring notice
+identifying the upstream commit and date.
+
+See LICENSE for the Apache License, Version 2.0.

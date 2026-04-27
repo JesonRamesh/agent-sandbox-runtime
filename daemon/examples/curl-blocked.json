@@ -1,0 +1,10 @@
+{
+  "name": "curl-blocked",
+  "command": ["curl", "-m", "3", "http://1.1.1.1"],
+  "mode": "enforce",
+  "allowed_hosts": [],
+  "allowed_paths": ["/"],
+  "allowed_bins": ["/usr/bin/curl"],
+  "forbidden_caps": ["CAP_SYS_ADMIN", "CAP_BPF"],
+  "env": {}
+}
