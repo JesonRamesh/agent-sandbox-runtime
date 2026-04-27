@@ -1,13 +1,12 @@
-Agent Sandbox Runtime — Sandbox Daemon (P2)
+Agent Sandbox Runtime — Sandbox Daemon
 Copyright 2026 The Agent Sandbox Authors.
 
-This product includes software developed by Isovalent, Inc. and the Tetragon
-project (https://github.com/cilium/tetragon), licensed under the Apache License,
-Version 2.0.
+This product is licensed under the Apache License, Version 2.0. See LICENSE.
 
-Specifically, the eBPF C programs under internal/bpf/programs/ are vendored
-verbatim (or with minimal adaptation) from Tetragon. Each vendored file
-preserves its original copyright header and includes a vendoring notice
-identifying the upstream commit and date.
+The eBPF C programs that this daemon loads at runtime live in the sibling
+`bpf/` directory of this repository (authored on the `Mehul` branch) and
+are licensed independently — see their headers and `bpf/common.h`.
 
-See LICENSE for the Apache License, Version 2.0.
+A read-only mirror of the C-side header is vendored at
+`daemon/bpf/common.h.reference` for review-time validation of the Go
+struct mirrors. The original file is GPL-2.0; the mirror is unmodified.

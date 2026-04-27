@@ -4,7 +4,7 @@
 
 `agent-sandbox-daemon` is the userspace half of the Agent Sandbox Runtime. It accepts agent-launch requests from `agentctl` over a Unix socket, creates a per-agent cgroup v2 directory, binds it to a kernel-side BPF policy through Mehul's eBPF LSM programs, launches the agent inside via cgroup-aware fork, and fans out kernel-level events to slog, per-agent log files, and a localhost WebSocket. It is built for AI-agent operators who need an in-kernel kill-switch across four pillars — network, file, exec, creds — without containers, namespaces, or a separate sidecar.
 
-The runtime is layered: cgroup v2 holds the agent process; eight BPF LSM/tracepoint programs (loaded once daemon-wide) walk a `cgroup_id → policy_id → struct policy` indirection on every relevant syscall and decide `allow | deny | audit`; the daemon owns the policy_id allocator, map writes, and event fan-out; IPC over Unix socket exposes a stable JSON contract to the CLI; the WebSocket exposes the same event stream to the UI. The eBPF C is owned by P1 (`bpf/` on `Mehul`) — see [`integration-with-mehul-ebpf.md`](integration-with-mehul-ebpf.md). v0 enforces AF_INET only (see [`../LIMITATIONS.md`](../LIMITATIONS.md)).
+The runtime is layered: cgroup v2 holds the agent process; eight BPF LSM/tracepoint programs (loaded once daemon-wide) walk a `cgroup_id → policy_id → struct policy` indirection on every relevant syscall and decide `allow | deny | audit`; the daemon owns the policy_id allocator, map writes, and event fan-out; IPC over Unix socket exposes a stable JSON contract to the CLI; the WebSocket exposes the same event stream to the UI. The eBPF C is owned by P1 (`bpf/` on `Mehul`) — see [`integration-with-mehul-ebpf.md`](integration-with-mehul-ebpf.md). v0 enforces AF_INET only.
 
 ## Runtime diagram
 
@@ -104,7 +104,7 @@ Translates `ipc.Manifest` into a single `Compiled` value — a byte-for-byte mir
 - `Bins[32]` of `BinaryRule{Path[256]}` — for the exec pillar's `binary_allowed()` exact-path match.
 - `ForbiddenCaps` — bitmask consumed by the creds pillar's `caps_allowed()`.
 
-`Compile(manifest)` does DNS resolution at launch time via `net.LookupHost`, expands one manifest host into one `HostRule` per A record, validates capability names against the cap-bit table, rejects oversized paths, and returns the packed struct. v0 is IPv4 only — IPv6 hosts in the manifest produce an error rather than silently being dropped. DNS rotation after launch is not handled — see [`../LIMITATIONS.md`](../LIMITATIONS.md).
+`Compile(manifest)` does DNS resolution at launch time via `net.LookupHost`, expands one manifest host into one `HostRule` per A record, validates capability names against the cap-bit table, rejects oversized paths, and returns the packed struct. v0 is IPv4 only — IPv6 hosts in the manifest produce an error rather than silently being dropped. DNS rotation after launch is not handled (resolution happens once at `RunAgent` time).
 
 Key invariants: addresses in `HostRule.AddrV4` use the same network-byte-order packing as `ctx->user_ip4` / `sin_addr.s_addr`; field order in `Compiled` matches `struct policy` exactly; the loader treats `Compiled` as opaque bytes via `unsafe.Pointer`.
 

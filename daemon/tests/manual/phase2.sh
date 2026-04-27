@@ -69,4 +69,4 @@ echo "  [ ] no leftover cgroup dirs"
 echo "  [ ] Ctrl-C on the daemon shuts down cleanly"
 echo "  [ ] restart the daemon after a forced kill — startup reconciliation cleans leaks"
 echo
-echo "If any line above failed, see CAVEATS.md and docs/operations.md (Phase 4)."
+echo "If any line above failed, see docs/operations.md."

@@ -1,6 +1,6 @@
 # Operations
 
-Operator-facing reference for running `agent-sandbox-daemon` on a real Linux host. For internal architecture, see [`architecture.md`](architecture.md). For deliberate scope cuts, see [`../LIMITATIONS.md`](../LIMITATIONS.md). For unverified-on-real-hardware claims, see [`../CAVEATS.md`](../CAVEATS.md).
+Operator-facing reference for running `agent-sandbox-daemon` on a real Linux host. For internal architecture, see [`architecture.md`](architecture.md). For the eBPF-side contract and merge-day asks, see [`integration-with-mehul-ebpf.md`](integration-with-mehul-ebpf.md).
 
 ## 1. Log locations
 
@@ -159,9 +159,12 @@ If `verify-host.sh` fails, the most common fix is the HWE kernel: `sudo apt inst
 
 ## 7. Known limitations
 
-These are scoped out of v0.1 by design, not bugs:
+These are scoped out of v0 by design, not bugs:
 
-- **DNS rotation, IPv6/Happy-Eyeballs interaction, TCP-only enforcement**: see [`../LIMITATIONS.md`](../LIMITATIONS.md).
-- **Restart-reconciliation gap, single-agent maps, hardcoded shutdown grace, etc.**: see [`../CAVEATS.md`](../CAVEATS.md), particularly §23 (restart adoption), §25 (2-second SIGTERM grace), §27 (bpffs mount requirement), §29 (10-second reap tick).
+- **AF_INET only.** IPv6 hosts in the manifest are rejected at compile time (the network pillar in `bpf/network.bpf.c` is AF_INET-only).
+- **DNS rotation after launch is not handled.** `manifest.allowed_hosts` is resolved once at `RunAgent` time. If a host's authoritative DNS rotates, the agent keeps using the captured addresses.
+- **Concurrent-agent ceiling = 32.** Bound by the kernel `policies` ARRAY map. The 33rd `RunAgent` returns `BPF_LOAD_FAILED`.
+- **Restart adoption is partial.** The daemon pins maps so enforcement survives a daemon restart, but the new daemon does not re-attach event readers or rebuild the in-memory registry. `agentctl list` does not show orphaned agents until adoption lands.
+- **Hardcoded 2-second SIGTERM grace** during shutdown. Agents that don't handle SIGTERM are SIGKILL'd after 2 s.
 
-If you hit something not on either list, capture `journalctl -u agent-sandbox` output, the contents of `/sys/fs/cgroup/agent-sandbox/` and `/sys/fs/bpf/agent-sandbox/`, and file an issue.
+If you hit something not on this list, capture `journalctl -u agent-sandbox` output, the contents of `/sys/fs/cgroup/agent-sandbox/` and `/sys/fs/bpf/agent-sandbox/`, and file an issue.

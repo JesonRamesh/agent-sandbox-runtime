@@ -53,9 +53,9 @@ to slog + per-agent log file + WebSocket subscribers.
 
 Detailed per-package breakdown and lifecycle walkthrough:
 [docs/architecture.md](docs/architecture.md). Operating runbook (logs,
-errors, recovery): [docs/operations.md](docs/operations.md).
-Per-agent vs. system-wide design rationale:
-[docs/daemon-model-comparison.md](docs/daemon-model-comparison.md).
+errors, recovery): [docs/operations.md](docs/operations.md). Frozen
+contract with the eBPF side and merge-day asks:
+[docs/integration-with-mehul-ebpf.md](docs/integration-with-mehul-ebpf.md).
 
 ## Target environment
 
@@ -98,15 +98,19 @@ read-only copy of the kernel-side header. See
 for the frozen contract (map names, struct field order, hook attach
 points).
 
-## Docs and limitations
+## Docs
 
+- [`docs/integration-with-mehul-ebpf.md`](docs/integration-with-mehul-ebpf.md) — frozen contract with Mehul's eBPF side, runtime expectations, and the merge-day ask list.
 - [`docs/architecture.md`](docs/architecture.md) — internal design and per-package responsibilities.
 - [`docs/operations.md`](docs/operations.md) — runbook with named fixes for common errors.
-- [`docs/integration-with-mehul-ebpf.md`](docs/integration-with-mehul-ebpf.md) — contract with the eBPF side.
-- [`docs/daemon-model-comparison.md`](docs/daemon-model-comparison.md) — per-agent IPC vs. system-wide HTTP.
 - [`api/proto.md`](api/proto.md) — IPC contract between daemon and CLI/UI.
-- [`LIMITATIONS.md`](LIMITATIONS.md) — known scope limits in v0 (DNS rotation, IPv4-only, TCP-only).
-- [`CAVEATS.md`](CAVEATS.md) — unverified claims and deviations.
+- [`bpf/README.md`](bpf/README.md) — explains the vendored read-only `common.h.reference`.
+
+## Known v0 scope
+
+- AF_INET only — IPv6 hosts in the manifest are rejected (the network pillar in `bpf/network.bpf.c` is AF_INET-only).
+- DNS rotation after agent launch is not handled — addresses are resolved once at `RunAgent` time.
+- Concurrent-agent ceiling is 32 (kernel `policies` ARRAY map size). See the integration doc's "Asks for merge day" for the bump request.
 
 ## License
 

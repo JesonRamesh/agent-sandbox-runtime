@@ -121,11 +121,13 @@ end-to-end without per-host tweaks.
 
 4. **(Optional) coexistence note.** Your branch contains a daemon stub
    under `daemon/cmd/agentd/` that does the same job differently
-   (HTTP+SSE, system-wide). Mine is at `daemon/cmd/daemon/` after
-   merge, so the two won't collide on path. Pick whichever architecture
-   the team wants at merge time — see
-   [`docs/daemon-model-comparison.md`](daemon-model-comparison.md) for
-   why mine is per-agent IPC. **No code change needed on your side
+   (HTTP+SSE, system-wide). Mine is at `daemon/cmd/daemon/`, so paths
+   don't collide. Tomorrow's merge needs to pick which architecture
+   wins. The short version of why I went per-agent-IPC: the daemon
+   creates the cgroup and `fork+exec`s the agent itself (cgroup-aware
+   fork via `SysProcAttr.UseCgroupFD`), which keeps `CAP_BPF` /
+   `CAP_SYS_ADMIN` confined to the daemon and gives free process
+   supervision via `cmd.Wait()`. **No code change needed on your side
    for this.** It's a team-decision question, not an integration ask.
 
 ## What I did NOT change

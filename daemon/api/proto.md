@@ -105,7 +105,7 @@ Field limits (mirroring `bpf/common.h.reference`):
 
 Concurrent agents are bounded by the kernel's `policies` ARRAY map (`MAX_POLICIES = 32` today). The 33rd `RunAgent` returns `BPF_LOAD_FAILED` with a message about capacity.
 
-DNS rotation after launch is not handled — see `LIMITATIONS.md`.
+DNS rotation after launch is not handled — addresses are resolved once at `RunAgent` time.
 
 ### `AgentSummary`
 
@@ -219,7 +219,7 @@ Lookup semantics in the kernel programs (see `bpf/network.bpf.c` etc.):
 
 The `MAX_POLICIES = 32` limit caps concurrent agents per host. Bumping it requires recompiling Mehul's `bpf/common.h` and the four `.bpf.o` objects.
 
-DNS rotation after launch is not handled — see `LIMITATIONS.md`.
+DNS rotation after launch is not handled — addresses are resolved once at `RunAgent` time.
 
 ## WebSocket (Phase 3+)
 
