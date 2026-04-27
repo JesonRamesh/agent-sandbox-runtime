@@ -249,7 +249,8 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 	if err := d.registry.Add(a); err != nil {
 		// Should never happen — agent IDs are random — but be defensive.
 		res.cleanup(d.log, id)
-		return "", fmt.Errorf("%w: registry add: %v", ipc.ErrInternal, err)
+		// No sentinel for INTERNAL — CodeForError catches anything unmapped.
+		return "", fmt.Errorf("registry add: %v", err)
 	}
 
 	log.Info("agent started",
