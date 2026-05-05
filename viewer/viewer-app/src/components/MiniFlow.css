@@ -4,10 +4,12 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 14px;
+  padding: 10px 16px 10px;
   background: var(--bg-panel);
   border: 0.5px solid var(--border-subtle);
   border-radius: 10px;
+  height: 120px;
+  flex-shrink: 0;
   overflow: hidden;
 }
 
@@ -37,10 +39,12 @@
   display: flex;
   align-items: center;
   gap: 0;
+  flex: 1;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: none;
-  padding-bottom: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-active) transparent;
+  padding: 0 4px 4px;
 }
 
 .mini-flow__track::-webkit-scrollbar { display: none; }
@@ -58,12 +62,12 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.03);
-  border: 0.5px solid var(--node-color, var(--border-subtle));
-  min-width: 48px;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--node-color, var(--border-subtle));
+  min-width: 64px;
   transition: background 150ms ease, box-shadow 150ms ease;
   cursor: default;
 }
@@ -75,10 +79,10 @@
 
 .mf-node--circle {
   border-radius: 50%;
-  width: 44px;
-  height: 44px;
-  min-width: 44px;
-  padding: 4px;
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
+  padding: 6px;
 }
 
 .mf-node--ellipsis {
@@ -111,13 +115,13 @@
 }
 
 .mf-node__icon {
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1;
 }
 
 .mf-node__label {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.4px;
@@ -130,22 +134,22 @@
 .mf-connector {
   display: flex;
   align-items: center;
-  width: 28px;
+  width: 36px;
   flex-shrink: 0;
   position: relative;
 }
 
 .mf-connector__line {
   flex: 1;
-  height: 1px;
+  height: 1.5px;
   background: var(--border-active);
 }
 
 .mf-connector__arrow {
-  font-size: 14px;
+  font-size: 18px;
   color: var(--border-active);
   line-height: 1;
-  margin-left: -2px;
+  margin-left: -3px;
 }
 
 /* Animated connector — flows right */

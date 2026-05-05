@@ -37,7 +37,7 @@ function MiniNode({ event, isActive, isBlocked }) {
       style={{ "--node-color": color }}
       title={cfg.label}
     >
-      <span className="mf-node__icon">{isBlocked ? "ὪB" : cfg.icon}</span>
+      <span className="mf-node__icon">{isBlocked ? "✕" : cfg.icon}</span>
       <span className="mf-node__label">{isBlocked ? "Blocked" : cfg.label}</span>
     </div>
   );
