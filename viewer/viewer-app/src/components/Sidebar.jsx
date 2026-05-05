@@ -44,10 +44,10 @@ export default function Sidebar({
 
   return (
     <aside className="sidebar">
-      {/* Brand */}
+      {/* Top section — just a label, no duplicate brand */}
       <div className="sidebar__brand">
-        <span className="sidebar__brand-icon">▲</span>
-        <span className="sidebar__brand-name">AgentOS</span>
+        <span className="sidebar__brand-icon">◈</span>
+        <span className="sidebar__brand-name">Control Panel</span>
       </div>
 
       {/* WS status */}
