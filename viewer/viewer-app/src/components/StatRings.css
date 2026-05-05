@@ -1,0 +1,126 @@
+/* ── Stat Rings row ──────────────────────────────────────────────────────── */
+
+.stat-rings {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+.stat-rings__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px 12px 10px;
+  background: var(--bg-panel);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 10px;
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.stat-rings__card:hover {
+  border-color: var(--border-active);
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.06);
+}
+
+.stat-rings__card--single {
+  gap: 6px;
+}
+
+/* Two rings side by side */
+.stat-rings__rings {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Individual ring wrapper */
+.stat-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+}
+
+.stat-ring__svg {
+  /* rotate so arc starts at top */
+  transform: rotate(-90deg);
+  /* but text should NOT rotate */
+}
+
+/* The value text inside ring — must counteract the SVG rotation */
+.stat-ring__val {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 700;
+  transform-origin: center;
+  transform: rotate(90deg);
+  dominant-baseline: central;
+}
+
+.stat-ring__labels {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.stat-ring__label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.stat-ring__sublabel {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+/* Card footer label */
+.stat-rings__card-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  border-top: 0.5px solid var(--border-subtle);
+  width: 100%;
+  text-align: center;
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+/* Uptime display for session card */
+.stat-rings__uptime {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.stat-rings__uptime-val {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent-purple);
+}
+
+.stat-rings__uptime-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+@media (max-width: 700px) {
+  .stat-rings { grid-template-columns: 1fr; }
+}

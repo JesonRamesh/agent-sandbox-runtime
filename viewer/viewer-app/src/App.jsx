@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Header from './components/Header.jsx';
-import AgentTabs from './components/AgentTabs.jsx';
-import StatsRow from './components/StatsRow.jsx';
+import Sidebar from './components/Sidebar.jsx';
+import StatRings from './components/StatRings.jsx';
 import LLMPanel from './components/LLMPanel.jsx';
 import KernelPanel from './components/KernelPanel.jsx';
-import SecurityPanel from './components/SecurityPanel.jsx';
+import ThreatGauge from './components/ThreatGauge.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
 
@@ -243,29 +243,50 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Top header bar — full width */}
       <Header wsStatus={wsStatus} />
-      <AgentTabs agents={agents} activeAgent={activeAgent} onSelectAgent={setActiveAgent} />
-      <StatsRow stats={stats} blockedPulseKey={blockedPulseKey} />
-      <div className="app__tabbar">
-        <button className={activeTab === 'events' ? 'active' : ''} onClick={() => setActiveTab('events')}>Events</button>
-        <button className={activeTab === 'workflow' ? 'active' : ''} onClick={() => setActiveTab('workflow')}>Workflow</button>
+
+      {/* Main body: sidebar + content */}
+      <div className="app__body">
+        <Sidebar
+          agents={agents}
+          activeAgent={activeAgent}
+          onSelectAgent={setActiveAgent}
+          llmEvents={llmEvents}
+          kernelEvents={kernelEvents}
+          stats={stats}
+          wsStatus={wsStatus}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
+        />
+
+        <div className="app__main">
+          {/* Animated ring stats */}
+          <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />
+
+          {/* Event panels or workflow graph */}
+          {activeTab === 'events' ? (
+            <div className="app__panels">
+              <LLMPanel
+                events={filteredLlm}
+                alert={injectionAlert}
+                injectionTargets={injectionTargets}
+                onDismissAlert={dismissAlert}
+              />
+              <KernelPanel events={filteredKernel} />
+            </div>
+          ) : (
+            <div className="app__workflow">
+              <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
+            </div>
+          )}
+
+          {/* Threat arc gauge — only show on events tab */}
+          {activeTab === 'events' && (
+            <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
+          )}
+        </div>
       </div>
-      {activeTab === 'events' ? (
-        <div className="app__panels">
-          <LLMPanel
-            events={filteredLlm}
-            alert={injectionAlert}
-            injectionTargets={injectionTargets}
-            onDismissAlert={dismissAlert}
-          />
-          <KernelPanel events={filteredKernel} />
-        </div>
-      ) : (
-        <div className="app__workflow">
-          <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
-        </div>
-      )}
-      <SecurityPanel analysis={latestAnalysis} lastTs={lastAnalysisTs} />
     </div>
   );
 }

@@ -1,0 +1,282 @@
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 200px;
+  min-width: 200px;
+  background: var(--bg-panel);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 0 0 12px 0;
+  overflow: hidden;
+}
+
+/* ── Brand ───────────────────────────────────────────────────────────────── */
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 14px;
+  border-bottom: 0.5px solid var(--border-subtle);
+}
+
+.sidebar__brand-icon {
+  color: var(--accent-blue);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.sidebar__brand-name {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+/* ── WS status pill ──────────────────────────────────────────────────────── */
+.sidebar__ws {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.sidebar__ws-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sidebar__ws--connected .sidebar__ws-dot {
+  background: var(--accent-emerald);
+  animation: pulse-halo 2s ease-in-out infinite;
+}
+
+.sidebar__ws--disconnected .sidebar__ws-dot {
+  background: var(--accent-crimson);
+  animation: pulse-halo-red 2s ease-in-out infinite;
+}
+
+.sidebar__ws-label {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.sidebar__ws--connected .sidebar__ws-label { color: var(--accent-emerald); }
+.sidebar__ws--disconnected .sidebar__ws-label { color: var(--accent-crimson); }
+
+.sidebar__ws-uptime {
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+/* ── Nav ─────────────────────────────────────────────────────────────────── */
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px 4px;
+}
+
+.sidebar__nav-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 8px 6px;
+}
+
+.sidebar__nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: background 150ms ease, color 150ms ease;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar__nav-item:hover {
+  background: var(--bg-panel-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__nav-item.is-active {
+  background: rgba(59, 130, 246, 0.12);
+  color: var(--accent-blue);
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+.sidebar__nav-icon {
+  font-size: 13px;
+  line-height: 1;
+  width: 16px;
+  text-align: center;
+}
+
+.sidebar__nav-text {
+  font-weight: 600;
+}
+
+/* ── Agents section ──────────────────────────────────────────────────────── */
+.sidebar__section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 8px 4px;
+  border-top: 0.5px solid var(--border-subtle);
+  margin-top: 4px;
+}
+
+.sidebar__empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 4px 10px;
+}
+
+.sidebar__agent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  transition: background 150ms ease, color 150ms ease;
+  text-align: left;
+  width: 100%;
+  overflow: hidden;
+}
+
+.sidebar__agent:hover {
+  background: var(--bg-panel-hover);
+  color: var(--text-primary);
+}
+
+.sidebar__agent.is-active {
+  background: rgba(139, 92, 246, 0.10);
+  color: var(--text-primary);
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.2);
+}
+
+.sidebar__agent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sidebar__agent-dot--running  { background: var(--accent-emerald); animation: pulse-halo 2s ease-in-out infinite; }
+.sidebar__agent-dot--done     { background: var(--accent-blue); }
+.sidebar__agent-dot--crashed  { background: var(--accent-crimson); }
+.sidebar__agent-dot--idle     { background: var(--text-muted); }
+
+.sidebar__agent-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.sidebar__agent-status {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.sidebar__agent-status--running { color: var(--accent-emerald); }
+.sidebar__agent-status--done    { color: var(--accent-blue); }
+.sidebar__agent-status--crashed { color: var(--accent-crimson); }
+
+/* ── Quick counts ────────────────────────────────────────────────────────── */
+.sidebar__counts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 16px 8px;
+  border-top: 0.5px solid var(--border-subtle);
+  margin-top: 4px;
+}
+
+.sidebar__count-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sidebar__count-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.sidebar__count-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.sidebar__count-value--good { color: var(--accent-emerald); }
+.sidebar__count-value--bad  { color: var(--accent-crimson); }
+
+/* ── Policy badge ────────────────────────────────────────────────────────── */
+.sidebar__policy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: auto 12px 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(16, 185, 129, 0.06);
+  border: 0.5px solid rgba(16, 185, 129, 0.2);
+}
+
+.sidebar__policy-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.sidebar__policy-text {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-emerald);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ── Keyframes (reuse from Header.css via cascade) ───────────────────────── */
+@keyframes pulse-halo {
+  0%   { box-shadow: 0 0 0 0   rgba(16, 185, 129, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(16, 185, 129, 0); }
+}
+
+@keyframes pulse-halo-red {
+  0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0); }
+}
