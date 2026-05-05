@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useState } from 'react';
 import './Panel.css';
 import './EventRow.css';
+import './EventCard.css';
 import AlertBanner from './AlertBanner.jsx';
 
 function formatTime(ts) {
@@ -57,21 +58,18 @@ function getDetail(event) {
 }
 
 export default function LLMPanel({ events, alert, injectionTargets, onDismissAlert }) {
-  const bottomRef = useRef(null);
-
-  useEffect(() => {
-    if (bottomRef.current) {
-      bottomRef.current.scrollIntoView({ block: 'end' });
-    }
-  }, [events.length]);
-
   const targets = injectionTargets || null;
+  const [showAll, setShowAll] = useState(false);
 
-  // Skip stdout rows that are empty
+  // Skip empty stdout
   const visible = events.filter((e) => {
     if (e.type === 'stdout' && (e.data?.line ?? '').trim() === '') return false;
     return true;
   });
+
+  const CARD_LIMIT = 6;
+  const displayed = showAll ? visible : visible.slice(-CARD_LIMIT);
+  const hiddenCount = visible.length - CARD_LIMIT;
 
   return (
     <section className="panel">
@@ -80,7 +78,19 @@ export default function LLMPanel({ events, alert, injectionTargets, onDismissAle
           <span className="panel__badge panel__badge--llm">LLM</span>
           Agent events
         </span>
-        <span className="panel__count">{visible.length}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {!showAll && hiddenCount > 0 && (
+            <button className="panel__showall" onClick={() => setShowAll(true)}>
+              +{hiddenCount} more
+            </button>
+          )}
+          {showAll && (
+            <button className="panel__showall" onClick={() => setShowAll(false)}>
+              collapse
+            </button>
+          )}
+          <span className="panel__count">{visible.length}</span>
+        </div>
       </header>
       {alert && (
         <AlertBanner
@@ -94,25 +104,27 @@ export default function LLMPanel({ events, alert, injectionTargets, onDismissAle
         {visible.length === 0 ? (
           <div className="panel__empty">waiting for LLM events…</div>
         ) : (
-          visible.map((event) => {
-            const isTarget = targets && targets.has(event._id);
-            const label  = getLabel(event);
-            const detail = getDetail(event);
+          displayed.map((event, i) => {
+            const isTarget  = targets && targets.has(event._id);
+            const isNewest  = i === displayed.length - 1;
+            const label     = getLabel(event);
+            const detail    = getDetail(event);
             const cls =
-              `event-row event-row--two-line type-${event.type}` +
-              (isTarget ? ' is-injection-target' : '');
+              `event-card type-${event.type}` +
+              (isTarget ? ' is-injection-target' : '') +
+              (isNewest ? ' event-card--newest'  : '');
             return (
               <div key={event._id} className={cls}>
-                <span className="event-row__time">{formatTime(event.ts)}</span>
-                <span className="event-row__body">
-                  <span className="event-row__label">{label}</span>
-                  {detail && <span className="event-row__detail">{detail}</span>}
-                </span>
+                <div className="event-card__top">
+                  <span className="event-card__label">{label}</span>
+                  <span className="event-card__time">{formatTime(event.ts)}</span>
+                </div>
+                {detail && <div className="event-card__detail">{detail}</div>}
               </div>
             );
           })
         )}
-        <div ref={bottomRef} />
+
       </div>
     </section>
   );

@@ -6,6 +6,7 @@ import StatRings from './components/StatRings.jsx';
 import LLMPanel from './components/LLMPanel.jsx';
 import KernelPanel from './components/KernelPanel.jsx';
 import ThreatGauge from './components/ThreatGauge.jsx';
+import MiniFlow from './components/MiniFlow.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
 
@@ -244,7 +245,7 @@ export default function App() {
   return (
     <div className="app">
       {/* Top header bar — full width */}
-      <Header wsStatus={wsStatus} />
+      <Header wsStatus={wsStatus} llmEvents={llmEvents} kernelEvents={kernelEvents} />
 
       {/* Main body: sidebar + content */}
       <div className="app__body">
@@ -266,6 +267,12 @@ export default function App() {
 
           {/* Event panels or workflow graph */}
           {activeTab === 'events' ? (
+            <>
+            <MiniFlow
+              llmEvents={filteredLlm}
+              kernelEvents={filteredKernel}
+              injectionTargets={injectionTargets}
+            />
             <div className="app__panels">
               <LLMPanel
                 events={filteredLlm}
@@ -275,6 +282,7 @@ export default function App() {
               />
               <KernelPanel events={filteredKernel} />
             </div>
+            </>  
           ) : (
             <div className="app__workflow">
               <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
