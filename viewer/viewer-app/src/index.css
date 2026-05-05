@@ -48,17 +48,34 @@
 
 * { box-sizing: border-box; }
 
+/* ── Animated gradient mesh background ───────────────────────────────────── */
+
+@keyframes mesh-drift {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg-page);
   color: var(--text-primary);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(59,130,246,0.07) 0%, transparent 60%),
+    radial-gradient(ellipse at 80% 80%, rgba(139,92,246,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse at 60% 10%, rgba(16,185,129,0.04) 0%, transparent 50%),
+    var(--bg-page);
+  background-size: 200% 200%;
+  animation: mesh-drift 20s ease infinite;
 }
 
 button {

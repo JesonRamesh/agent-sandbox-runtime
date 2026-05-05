@@ -1,12 +1,36 @@
 .panel {
   display: flex;
   flex-direction: column;
-  background: var(--bg-panel);
-  border: 0.5px solid var(--border-subtle);
-  border-radius: 6px;
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.055) 0%,
+    rgba(255,255,255,0.02) 100%
+  );
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  box-shadow:
+    0 8px 32px rgba(0,0,0,0.4),
+    0 1px 0 rgba(255,255,255,0.08) inset,
+    0 -1px 0 rgba(0,0,0,0.2) inset;
+  transition: border-color 200ms ease, box-shadow 200ms ease, background 200ms ease;
+}
+
+.panel:hover {
+  background: linear-gradient(
+    135deg,
+    rgba(255,255,255,0.075) 0%,
+    rgba(255,255,255,0.03) 100%
+  );
+  border-color: rgba(255,255,255,0.16);
+  box-shadow:
+    0 8px 40px rgba(0,0,0,0.5),
+    0 1px 0 rgba(255,255,255,0.12) inset;
 }
 
 .panel__header {
@@ -14,8 +38,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 0.5px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.01);
+  border-bottom: 0.5px solid rgba(255,255,255,0.05);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .panel__title {

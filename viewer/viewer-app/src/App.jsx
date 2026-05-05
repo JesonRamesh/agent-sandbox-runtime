@@ -7,6 +7,7 @@ import LLMPanel from './components/LLMPanel.jsx';
 import KernelPanel from './components/KernelPanel.jsx';
 import ThreatGauge from './components/ThreatGauge.jsx';
 import MiniFlow from './components/MiniFlow.jsx';
+import ConnectionTimeline from './components/ConnectionTimeline.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
 
@@ -289,9 +290,12 @@ export default function App() {
             </div>
           )}
 
-          {/* Threat arc gauge — only show on events tab */}
+          {/* Connection timeline + threat gauge — events tab only */}
           {activeTab === 'events' && (
-            <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
+            <>
+              <ConnectionTimeline kernelEvents={filteredKernel} />
+              <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
+            </>
           )}
         </div>
       </div>
