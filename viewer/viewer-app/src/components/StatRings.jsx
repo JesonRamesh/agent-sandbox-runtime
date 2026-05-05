@@ -1,48 +1,100 @@
 import './StatRings.css';
 
-// Animated SVG donut ring
-function Ring({ value, total, color, bgColor = 'var(--border-subtle)', size = 80, stroke = 8, label, sublabel, children }) {
-  const r = (size - stroke) / 2;
-  const circ = 2 * Math.PI * r;
-  const pct = total > 0 ? Math.min(value / total, 1) : 0;
-  const dash = pct * circ;
-  const gap  = circ - dash;
+const W = 220, H = 120, CX = 110, CY = 112, R = 88, STROKE = 12;
+
+// Convert polar angle (degrees) to SVG x,y on the arc
+function polar(cx, cy, r, deg) {
+  const rad = (deg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+// Build SVG arc path for a semi-circle segment
+function arcPath(cx, cy, r, startDeg, endDeg) {
+  const s = polar(cx, cy, r, startDeg);
+  const e = polar(cx, cy, r, endDeg);
+  const large = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+}
+
+// Semi-arc spans from 180° (left) to 0° (right) = top half
+const START = 180, END = 360;
+
+function SplitArc({ leftVal, rightVal, leftColor, rightColor, leftLabel, rightLabel, centerTop, centerBottom, dimmed }) {
+  const total = leftVal + rightVal;
+  const leftPct  = total > 0 ? leftVal  / total : 0.5;
+  const rightPct = total > 0 ? rightVal / total : 0.5;
+  const splitDeg = START + leftPct * (END - START);
+
+  // Track (background)
+  const trackPath = arcPath(CX, CY, R, START, END);
+  // Left arc
+  const leftPath  = arcPath(CX, CY, R, START, splitDeg);
+  // Right arc
+  const rightPath = arcPath(CX, CY, R, splitDeg, END);
+
+  const leftPct100  = Math.round(leftPct  * 100);
+  const rightPct100 = Math.round(rightPct * 100);
 
   return (
-    <div className="stat-ring">
-      <svg width={size} height={size} className="stat-ring__svg">
+    <div className="split-arc">
+      <svg width={W} height={H} className="split-arc__svg" overflow="visible">
+        <defs>
+          <filter id="glow-l">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-r">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
         {/* Track */}
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          fill="none"
-          stroke={bgColor}
-          strokeWidth={stroke}
-        />
-        {/* Fill */}
-        <circle
-          cx={size / 2} cy={size / 2} r={r}
-          fill="none"
-          stroke={color}
-          strokeWidth={stroke}
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${gap}`}
-          strokeDashoffset={circ / 4}
-          style={{ transition: 'stroke-dasharray 600ms cubic-bezier(0.4,0,0.2,1)', filter: `drop-shadow(0 0 4px ${color})` }}
-        />
-        {/* Centre value */}
-        <text
-          x={size / 2} y={size / 2}
-          textAnchor="middle" dominantBaseline="central"
-          className="stat-ring__val"
-          fill={color}
-        >
-          {value}
+        <path d={trackPath} fill="none" stroke="var(--border-subtle)" strokeWidth={STROKE} strokeLinecap="round" />
+
+        {/* Left arc segment */}
+        {leftPct > 0.01 && (
+          <path d={leftPath} fill="none" stroke={leftColor} strokeWidth={STROKE} strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 5px ${leftColor})`, transition: 'all 600ms cubic-bezier(0.4,0,0.2,1)' }}
+          />
+        )}
+
+        {/* Right arc segment */}
+        {rightPct > 0.01 && (
+          <path d={rightPath} fill="none" stroke={rightColor} strokeWidth={STROKE} strokeLinecap="round"
+            style={{ filter: `drop-shadow(0 0 5px ${rightColor})`, transition: 'all 600ms cubic-bezier(0.4,0,0.2,1)' }}
+          />
+        )}
+
+        {/* Split divider dot */}
+        {total > 0 && (() => {
+          const p = polar(CX, CY, R, splitDeg);
+          return <circle cx={p.x} cy={p.y} r="4" fill="var(--bg-page)" stroke="var(--border-active)" strokeWidth="1.5" />;
+        })()}
+
+        {/* Centre: ratio */}
+        <text x={CX} y={CY - 18} textAnchor="middle" className="split-arc__ratio-top" fill="var(--text-primary)">
+          {centerTop}
+        </text>
+        <text x={CX} y={CY - 2} textAnchor="middle" className="split-arc__ratio-bottom" fill="var(--text-muted)">
+          {centerBottom}
         </text>
       </svg>
-      <div className="stat-ring__labels">
-        <span className="stat-ring__label">{label}</span>
-        {sublabel && <span className="stat-ring__sublabel">{sublabel}</span>}
-        {children}
+
+      {/* Legend row */}
+      <div className="split-arc__legend">
+        <div className="split-arc__leg">
+          <span className="split-arc__leg-dot" style={{ background: leftColor }} />
+          <span className="split-arc__leg-val" style={{ color: leftColor }}>{leftVal}</span>
+          <span className="split-arc__leg-label">{leftLabel}</span>
+          <span className="split-arc__leg-pct">{leftPct100}%</span>
+        </div>
+        <div className="split-arc__leg">
+          <span className="split-arc__leg-dot" style={{ background: rightColor }} />
+          <span className="split-arc__leg-val" style={{ color: rightColor }}>{rightVal}</span>
+          <span className="split-arc__leg-label">{rightLabel}</span>
+          <span className="split-arc__leg-pct">{rightPct100}%</span>
+        </div>
       </div>
     </div>
   );
@@ -51,73 +103,50 @@ function Ring({ value, total, color, bgColor = 'var(--border-subtle)', size = 80
 function formatUptime(seconds) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
-  const r = s % 60;
-  if (m === 0) return `${r}s`;
-  return `${m}m ${r.toString().padStart(2, '0')}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  const rs = s % 60;
+  if (h > 0) return `${h}h ${rm.toString().padStart(2,'0')}m`;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${rs.toString().padStart(2, '0')}s`;
 }
 
 export default function StatRings({ stats, blockedPulseKey }) {
   const { toolCalls = 0, allowed = 0, blocked = 0, uptime = 0 } = stats || {};
-  const totalConn = allowed + blocked;
+  const safe = toolCalls - blocked;
 
   return (
     <div className="stat-rings">
-      {/* Ring 1: Connections allowed vs blocked */}
+      {/* Card 1: Connections — allowed vs blocked */}
       <div className="stat-rings__card">
-        <div className="stat-rings__rings">
-          <Ring
-            value={allowed}
-            total={totalConn || 1}
-            color="var(--accent-emerald)"
-            size={110} stroke={9}
-            label="Allowed"
-          />
-          <Ring
-            value={blocked}
-            total={totalConn || 1}
-            color="var(--accent-crimson)"
-            size={110} stroke={9}
-            label="Blocked"
-          />
-        </div>
+        <SplitArc
+          leftVal={allowed}  leftColor="var(--accent-emerald)"  leftLabel="allowed"
+          rightVal={blocked} rightColor="var(--accent-crimson)" rightLabel="blocked"
+          centerTop={`${allowed}:${blocked}`}
+          centerBottom="allow:block"
+        />
         <div className="stat-rings__card-label">Connections</div>
       </div>
 
-      {/* Ring 2: Tool calls */}
+      {/* Card 2: Agent activity — safe vs injected */}
       <div className="stat-rings__card">
-        <div className="stat-rings__rings">
-          <Ring
-            value={toolCalls}
-            total={Math.max(toolCalls, 10)}
-            color="var(--accent-blue)"
-            size={110} stroke={9}
-            label="Tool calls"
-          />
-          <Ring
-            value={blocked}
-            total={Math.max(toolCalls, 1)}
-            color="var(--accent-amber)"
-            size={110} stroke={9}
-            label="Injected"
-          />
-        </div>
+        <SplitArc
+          leftVal={Math.max(safe, 0)} leftColor="var(--accent-blue)"  leftLabel="safe"
+          rightVal={blocked}          rightColor="var(--accent-amber)" rightLabel="injected"
+          centerTop={`${toolCalls}`}
+          centerBottom="tool calls"
+        />
         <div className="stat-rings__card-label">Agent Activity</div>
       </div>
 
-      {/* Ring 3: Session health — uptime arc (max 300s = full circle) */}
-      <div className="stat-rings__card stat-rings__card--single">
-        <Ring
-          value={toolCalls + allowed}
-          total={Math.max(toolCalls + allowed + blocked, 1)}
-          color="var(--accent-purple)"
-          size={110} stroke={9}
-          label="Events"
-          sublabel={`${toolCalls + allowed + blocked} total`}
+      {/* Card 3: Session — uptime + total events */}
+      <div className="stat-rings__card">
+        <SplitArc
+          leftVal={allowed + Math.max(safe,0)} leftColor="var(--accent-purple)" leftLabel="clean"
+          rightVal={blocked}                   rightColor="var(--accent-crimson)" rightLabel="threats"
+          centerTop={formatUptime(uptime)}
+          centerBottom="uptime"
         />
-        <div className="stat-rings__uptime">
-          <span className="stat-rings__uptime-val">{formatUptime(uptime)}</span>
-          <span className="stat-rings__uptime-label">uptime</span>
-        </div>
         <div className="stat-rings__card-label">Session</div>
       </div>
     </div>

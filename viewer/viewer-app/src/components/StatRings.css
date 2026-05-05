@@ -1,17 +1,17 @@
-/* ── Stat Rings row ──────────────────────────────────────────────────────── */
+/* ── Split Arc Stat Cards ─────────────────────────────────────────────────── */
 
 .stat-rings {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .stat-rings__card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 0;
   padding: 14px 12px 10px;
   background: var(--bg-panel);
   border: 0.5px solid var(--border-subtle);
@@ -21,66 +21,7 @@
 
 .stat-rings__card:hover {
   border-color: var(--border-active);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.06);
-}
-
-.stat-rings__card--single {
-  gap: 6px;
-}
-
-/* Two rings side by side */
-.stat-rings__rings {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Individual ring wrapper */
-.stat-ring {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 5px;
-}
-
-.stat-ring__svg {
-  /* rotate so arc starts at top */
-  transform: rotate(-90deg);
-  /* but text should NOT rotate */
-}
-
-/* The value text inside ring — must counteract the SVG rotation */
-.stat-ring__val {
-  font-family: var(--mono);
-  font-size: 20px;
-  font-weight: 700;
-  transform-origin: center;
-  transform: rotate(90deg);
-  dominant-baseline: central;
-}
-
-.stat-ring__labels {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.stat-ring__label {
-  font-family: var(--mono);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-}
-
-.stat-ring__sublabel {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--text-muted);
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.07);
 }
 
 /* Card footer label */
@@ -95,30 +36,84 @@
   width: 100%;
   text-align: center;
   padding-top: 8px;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
-/* Uptime display for session card */
-.stat-rings__uptime {
+/* ── Split Arc SVG wrapper ───────────────────────────────────────────────── */
+
+.split-arc {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1px;
+  gap: 8px;
+  width: 100%;
 }
 
-.stat-rings__uptime-val {
+.split-arc__svg {
+  overflow: visible;
+  display: block;
+}
+
+/* Centre text */
+.split-arc__ratio-top {
   font-family: var(--mono);
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--accent-purple);
+  dominant-baseline: auto;
 }
 
-.stat-rings__uptime-label {
+.split-arc__ratio-bottom {
   font-family: var(--mono);
   font-size: 9px;
-  color: var(--text-muted);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  dominant-baseline: auto;
+}
+
+/* ── Legend row ──────────────────────────────────────────────────────────── */
+
+.split-arc__legend {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: center;
+}
+
+.split-arc__leg {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.split-arc__leg-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.split-arc__leg-val {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.split-arc__leg-label {
+  font-family: var(--mono);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+}
+
+.split-arc__leg-pct {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-secondary);
+  background: var(--bg-panel-hover);
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 @media (max-width: 700px) {
