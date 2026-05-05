@@ -261,7 +261,9 @@ export default function App() {
           <KernelPanel events={filteredKernel} />
         </div>
       ) : (
-        <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
+        <div className="app__workflow">
+          <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
+        </div>
       )}
       <SecurityPanel analysis={latestAnalysis} lastTs={lastAnalysisTs} />
     </div>

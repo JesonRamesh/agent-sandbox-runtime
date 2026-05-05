@@ -9,20 +9,28 @@ function formatTime(ts) {
     String(d.getMilliseconds()).padStart(3, '0');
 }
 
-function renderContent(event) {
-  const d = event.data || {};
-  const target = d.hostname
-    ? `${d.hostname} (${d.dst_ip}:${d.dst_port})`
-    : `${d.dst_ip}:${d.dst_port}`;
+function getLabel(event) {
   switch (event.type) {
-    case 'connect_attempt':
-      return `→ ${target}`;
+    case 'connect_attempt': return 'Connection attempt';
+    case 'connect_allowed': return 'Connection permitted';
+    case 'connect_blocked': return 'Connection refused by kernel';
+    default:                return event.type;
+  }
+}
+
+function getDetail(event) {
+  const d = event.data || {};
+  switch (event.type) {
+    case 'connect_attempt': {
+      const host = d.hostname ? ` · ${d.hostname}` : '';
+      return `→ ${d.dst_ip || '?'}:${d.dst_port || '?'}${host}`;
+    }
     case 'connect_allowed':
-      return `✓ ${target} — ${d.reason || 'allowed'}`;
+      return [d.hostname, d.reason].filter(Boolean).join(' · ');
     case 'connect_blocked':
-      return `✗ ${target} — ${d.reason || 'blocked'}`;
+      return [d.hostname, d.reason].filter(Boolean).join(' · ');
     default:
-      return JSON.stringify(d);
+      return '';
   }
 }
 
@@ -38,20 +46,29 @@ export default function KernelPanel({ events }) {
   return (
     <section className="panel">
       <header className="panel__header">
-        <span className="panel__title">kernel events</span>
+        <span className="panel__title">
+          <span className="panel__badge panel__badge--kernel">KERNEL</span>
+          Network events
+        </span>
         <span className="panel__count">{events.length}</span>
       </header>
       <div className="panel__feed">
         {events.length === 0 ? (
           <div className="panel__empty">waiting for kernel events…</div>
         ) : (
-          events.map((event) => (
-            <div key={event._id} className={`event-row type-${event.type}`}>
-              <span className="event-row__time">{formatTime(event.ts)}</span>
-              <span className="event-row__badge">{event.type}</span>
-              <span className="event-row__content">{renderContent(event)}</span>
-            </div>
-          ))
+          events.map((event) => {
+            const label  = getLabel(event);
+            const detail = getDetail(event);
+            return (
+              <div key={event._id} className={`event-row event-row--two-line type-${event.type}`}>
+                <span className="event-row__time">{formatTime(event.ts)}</span>
+                <span className="event-row__body">
+                  <span className="event-row__label">{label}</span>
+                  {detail && <span className="event-row__detail">{detail}</span>}
+                </span>
+              </div>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

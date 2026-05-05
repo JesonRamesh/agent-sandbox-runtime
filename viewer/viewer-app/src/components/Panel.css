@@ -1,8 +1,8 @@
 .panel {
   display: flex;
   flex-direction: column;
-  background: var(--panel-bg);
-  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  border: 0.5px solid var(--border-subtle);
   border-radius: 6px;
   min-height: 0;
 }
@@ -12,25 +12,60 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0.5px solid var(--border-subtle);
   background: rgba(255, 255, 255, 0.01);
 }
 
 .panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: var(--mono);
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.6px;
+}
+
+/* LLM / KERNEL coloured badges in panel header */
+.panel__badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  transition: box-shadow 200ms ease;
+  cursor: default;
+}
+
+.panel__badge--llm {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.12);
+  border: 0.5px solid rgba(59, 130, 246, 0.3);
+}
+.panel__badge--llm:hover {
+  box-shadow: 0 0 10px var(--glow-blue);
+}
+
+.panel__badge--kernel {
+  color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.12);
+  border: 0.5px solid rgba(16, 185, 129, 0.3);
+}
+.panel__badge--kernel:hover {
+  box-shadow: 0 0 10px var(--glow-emerald);
 }
 
 .panel__count {
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);
   padding: 2px 8px;
-  border: 1px solid var(--border-strong);
+  border: 0.5px solid var(--border-active);
   border-radius: 999px;
 }
 

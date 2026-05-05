@@ -1,28 +1,44 @@
 /* Global theme — dark SOC / terminal aesthetic, matches viewer/index.html prototype. */
 
 :root {
-  --bg: #0a0e1a;
-  --panel-bg: #0f1520;
-  --panel-bg-hover: #131a28;
-  --border: #1c2536;
-  --border-strong: #2a3550;
+  /* Updated palette — Improvement 1 */
+  --bg-page:           #05080f;
+  --bg-panel:          #0b0f1a;
+  --bg-panel-hover:    #0f1420;
+  --border-subtle:     #1a2236;
+  --border-active:     #2a3550;
+  --text-primary:      #e8eaf0;
+  --text-secondary:    #6b7280;
+  --text-muted:        #374151;
+  --accent-blue:       #3b82f6;
+  --accent-emerald:    #10b981;
+  --accent-crimson:    #ef4444;
+  --accent-amber:      #f59e0b;
+  --accent-purple:     #8b5cf6;
+  --glow-blue:         rgba(59, 130, 246, 0.15);
+  --glow-emerald:      rgba(16, 185, 129, 0.15);
+  --glow-crimson:      rgba(239, 68, 68, 0.15);
+  --glow-purple:       rgba(139, 92, 246, 0.15);
 
-  --text: #e6ecf5;
-  --text-dim: #8a96ad;
-  --text-faint: #5a647a;
+  /* Legacy aliases — keep existing components working */
+  --bg:                var(--bg-page);
+  --panel-bg:          var(--bg-panel);
+  --panel-bg-hover:    var(--bg-panel-hover);
+  --border:            var(--border-subtle);
+  --border-strong:     var(--border-active);
+  --text:              var(--text-primary);
+  --text-dim:          var(--text-secondary);
+  --text-faint:        var(--text-muted);
+  --accent-green:      var(--accent-emerald);
+  --accent-red:        var(--accent-crimson);
 
-  --accent-blue: #4a9eff;
-  --accent-green: #3cd784;
-  --accent-red: #ff4d5e;
-  --accent-amber: #f4b740;
-
-  --type-stdout: #6a7691;
-  --type-tool-call: var(--accent-blue);
-  --type-stopped: var(--accent-green);
-  --type-crashed: var(--accent-red);
-  --type-attempt: #6a7691;
-  --type-allowed: var(--accent-green);
-  --type-blocked: var(--accent-red);
+  --type-stdout:       var(--text-muted);
+  --type-tool-call:    var(--accent-blue);
+  --type-stopped:      var(--accent-emerald);
+  --type-crashed:      var(--accent-crimson);
+  --type-attempt:      var(--text-muted);
+  --type-allowed:      var(--accent-emerald);
+  --type-blocked:      var(--accent-crimson);
 
   --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -36,8 +52,8 @@ html, body, #root {
   margin: 0;
   padding: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.5;
@@ -54,5 +70,5 @@ button {
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #3a4769; }

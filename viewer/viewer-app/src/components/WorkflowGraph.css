@@ -3,8 +3,8 @@
   width: 100%;
   height: 100%;
   min-height: 0;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--bg-page);
+  border: 0.5px solid var(--border-subtle);
   border-radius: 6px;
   overflow: hidden;
   display: flex;
@@ -18,8 +18,8 @@
   justify-content: center;
   gap: 12px;
   padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
-  background: var(--panel-bg);
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: var(--bg-panel);
   font-family: var(--mono);
   flex-shrink: 0;
 }
@@ -58,6 +58,7 @@
 .wf-wrapper .react-flow {
   flex: 1;
   min-height: 0;
+  height: 100%;
 }
 
 .wf-empty {
@@ -95,7 +96,7 @@
 }
 
 /* Darken ReactFlow's chrome to match theme */
-.wf-wrapper .react-flow__background { background: var(--bg); }
+.wf-wrapper .react-flow__background { background: var(--bg-page); }
 .wf-wrapper .react-flow__controls button {
   background: var(--panel-bg);
   border-color: var(--border);
@@ -380,34 +381,4 @@
   50%      { box-shadow: 0 0 20px rgba(255, 77, 94, 0.4), 0 0 8px rgba(255, 77, 94, 0.25); }
 }
 
-/* ── Tab bar ─────────────────────────────────────────────────────────────── */
-.app__tabbar {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-}
-
-.app__tabbar button {
-  font-family: var(--mono);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 6px 18px;
-  border-radius: 4px 4px 0 0;
-  border: 1px solid transparent;
-  border-bottom: none;
-  transition: color 120ms, background 120ms;
-}
-
-.app__tabbar button:hover {
-  color: var(--text-dim);
-  background: var(--panel-bg);
-}
-
-.app__tabbar button.active {
-  color: var(--accent-blue);
-  background: var(--panel-bg);
-  border-color: var(--border);
-}
+/* Tab bar styles live in App.css — removed from here to avoid conflicts */
