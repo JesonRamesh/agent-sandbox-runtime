@@ -100,6 +100,13 @@ func Compile(m ipc.Manifest) (Compiled, error) {
 			if int(c.NHosts) >= MaxHosts {
 				return c, fmt.Errorf("policy: too many host rules (max %d)", MaxHosts)
 			}
+			// Defense in depth: ParseHost already rejects /N>32, but a
+			// future caller that constructs HostRule directly could still
+			// land here. The kernel's host_allowed ternary degrades a >32
+			// prefix into "exact-match" silently — refuse the write.
+			if h.PrefixLen > 32 {
+				return c, fmt.Errorf("policy: host %q has IPv4 prefix /%d (must be <= 32)", raw, h.PrefixLen)
+			}
 			c.Hosts[c.NHosts] = h
 			c.NHosts++
 		}

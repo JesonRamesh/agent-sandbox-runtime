@@ -206,9 +206,8 @@ func parseAndValidate(path string, data []byte, lookup envLookup) (*Manifest, er
 	// working_dir (optional, abs path)
 	if n := seen["working_dir"]; n != nil {
 		if v, ok := scalarString(eb, n, "working_dir"); ok {
-			if !strings.HasPrefix(v, "/") {
-				eb.addf(CodeNonAbsolutePath, n.Line, n.Column, "working_dir",
-					"%q must be an absolute path; got %q", "working_dir", v)
+			if err := validWorkingDir(v); err != nil {
+				eb.addf(err.code, n.Line, n.Column, "working_dir", "%s", err.msg)
 			} else {
 				m.WorkingDir = v
 			}
@@ -361,7 +360,11 @@ func validateEnv(eb *errBuilder, n *yaml.Node, dst map[string]string, lookup env
 	}
 }
 
-var envVarRe = regexp.MustCompile(`\$\{([A-Z_][A-Z0-9_]*)\}`)
+// envVarRe and envKeyRe must agree on what names are valid. Earlier the
+// substitution regex was uppercase-only while the key validator accepted
+// mixed case, so `${lower_case_var}` in a value silently passed through
+// as a literal string and the operator's secret never reached the agent.
+var envVarRe = regexp.MustCompile(`\$\{([A-Za-z_][A-Za-z0-9_]*)\}`)
 
 var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 

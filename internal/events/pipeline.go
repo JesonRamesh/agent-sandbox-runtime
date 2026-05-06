@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/agent-sandbox/runtime/internal/ipc"
 )
@@ -48,6 +49,12 @@ type Pipeline struct {
 
 	fileMu sync.Mutex
 	files  map[string]*rotatingWriter
+
+	// dropped counts events lost because the input buffer was full at
+	// Submit time. Exposed via DroppedCount() so DaemonStatus can show
+	// "your security audit trail has gaps". Atomic — Submit is hot and
+	// must not take a lock just to bump a counter.
+	dropped atomic.Uint64
 
 	closeOnce sync.Once
 	closed    chan struct{}
@@ -149,13 +156,30 @@ func (p *Pipeline) Submit(ev ipc.Event) {
 	select {
 	case p.in <- ev:
 	default:
-		p.log.Warn("event pipeline buffer full; dropping event",
-			"agent_id", ev.AgentID, "type", ev.Type)
+		// Escalated from Warn to Error — for an enforcement product this
+		// is a security-relevant audit-trail gap, not a soft notice.
+		// DroppedCount() exposes the running total via DaemonStatus.
+		n := p.dropped.Add(1)
+		p.log.Error("event pipeline buffer full; dropping event",
+			"agent_id", ev.AgentID, "type", ev.Type, "dropped_total", n)
 	}
 }
 
-// Subscribe adds a sink. filterAgentID == "" means all agents. The returned
-// function unsubscribes; callers MUST call it (typically via defer).
+// DroppedCount returns the total number of events Submit has dropped due
+// to a full input buffer over the lifetime of this pipeline. Consumed by
+// DaemonStatus so operators can see when their audit trail has holes.
+func (p *Pipeline) DroppedCount() uint64 {
+	return p.dropped.Load()
+}
+
+// Subscribe adds a sink. filterAgentID == "" means "all events" — including
+// daemon-wide events whose AgentID is empty. A non-empty filter delivers only
+// events whose AgentID matches exactly; empty-AgentID events do NOT match a
+// non-empty filter. There is no third "system events" channel — to receive
+// daemon-wide events alongside per-agent events, subscribe with filterAgentID
+// == "" and discriminate in the sink.
+//
+// The returned function unsubscribes; callers MUST call it (typically via defer).
 func (p *Pipeline) Subscribe(filterAgentID string, s Sink) (unsubscribe func()) {
 	p.subMu.Lock()
 	id := p.nextID
@@ -256,22 +280,34 @@ func (p *Pipeline) fanOut(ev ipc.Event) {
 		}
 	}
 
-	// Hold the read lock only for the duration of the iteration; collect
-	// stale ids and remove them under a write lock afterwards. Brief §7
-	// forbids holding a lock across a channel send — sinks here are direct
-	// function calls, not sends, but a slow sink will block fan-out. v0.1
-	// accepts that trade-off (simpler than per-sub goroutines + queues).
-	var stale []uint64
+	// Snapshot the matching subscribers under RLock, then dispatch outside
+	// the lock. Holding the read lock across sink calls blocks Subscribe
+	// (writer-preference RWMutex queues new readers behind a pending
+	// writer); a slow 1s WS write would stall every fresh viewer
+	// reconnect. The trade-off: a sink invoked here may be one whose
+	// Unsubscribe just ran — we tolerate that (sinks must be safe to call
+	// once after unsubscribe; the WS sink's "already-closed" return is the
+	// primary case and resolves to a stale-removal on the next event).
+	type pendingSink struct {
+		id   uint64
+		sink Sink
+	}
+	var pending []pendingSink
 	p.subMu.RLock()
 	for id, sub := range p.subs {
 		if sub.filterAgentID != "" && sub.filterAgentID != ev.AgentID {
 			continue
 		}
-		if err := sub.sink(ev); err != nil {
-			stale = append(stale, id)
-		}
+		pending = append(pending, pendingSink{id: id, sink: sub.sink})
 	}
 	p.subMu.RUnlock()
+
+	var stale []uint64
+	for _, ps := range pending {
+		if err := p.deliver(ps.sink, ev); err != nil {
+			stale = append(stale, ps.id)
+		}
+	}
 
 	if len(stale) > 0 {
 		p.subMu.Lock()
@@ -280,6 +316,22 @@ func (p *Pipeline) fanOut(ev ipc.Event) {
 		}
 		p.subMu.Unlock()
 	}
+}
+
+// deliver invokes a sink with panic protection. fanOut runs in a single
+// goroutine under subMu.RLock — a panic in any sink would otherwise leave
+// the RLock held forever and silently kill every future event delivery.
+// Convert a panic into the same "remove subscriber" path the error return
+// already uses.
+func (p *Pipeline) deliver(sink Sink, ev ipc.Event) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			p.log.Error("event sink panicked; removing subscriber",
+				"agent_id", ev.AgentID, "type", ev.Type, "panic", fmt.Sprint(r))
+			err = fmt.Errorf("sink panic: %v", r)
+		}
+	}()
+	return sink(ev)
 }
 
 // appendAgentLog writes one JSON line to the per-agent log file, opening

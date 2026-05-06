@@ -118,9 +118,20 @@ type Runtime struct {
 	// Allocator + binding bookkeeping. mu guards every field below.
 	mu       sync.Mutex
 	free     []uint32              // free policy_ids (FIFO)
-	chans    map[uint64]chan Event // cgroup_id -> per-agent fan-out channel
+	chans    map[uint64]*agentChan // cgroup_id -> per-agent fan-out target
 	closed   bool
 	cancelFn context.CancelFunc
+}
+
+// agentChan is the per-agent fan-out target. The data channel `ch` is never
+// closed: closing it would race with fanOut's send and panic. Cleanup signals
+// shutdown by closing `done` instead, which fanOut's deliver selects on so a
+// post-cleanup event drops cleanly. close(done) is performed exactly once,
+// under Runtime.mu, by whichever path (releaseSlot or closeAllChans) first
+// removes the entry from rt.chans.
+type agentChan struct {
+	ch   chan Event
+	done chan struct{}
 }
 
 // LoadRuntime is called exactly once per daemon startup. It loads each
@@ -141,7 +152,7 @@ func LoadRuntime(bpfDir string, log *slog.Logger) (*Runtime, error) {
 		bpfDir: bpfDir,
 		log:    log,
 		colls:  make(map[string]*ebpf.Collection, len(bpfObjects)),
-		chans:  make(map[uint64]chan Event),
+		chans:  make(map[uint64]*agentChan),
 	}
 
 	// Free-list: ids 1..MaxPolicies, FIFO. id 0 is "unmanaged" per common.h.
@@ -266,8 +277,11 @@ func (rt *Runtime) Bind(agentID string, cgroupID uint64, compiled policy.Compile
 	}
 	id := rt.free[0]
 	rt.free = rt.free[1:]
-	ch := make(chan Event, 64)
-	rt.chans[cgroupID] = ch
+	ac := &agentChan{
+		ch:   make(chan Event, 64),
+		done: make(chan struct{}),
+	}
+	rt.chans[cgroupID] = ac
 	rt.mu.Unlock()
 
 	// Write policy first, binding second. If the binding lands before
@@ -289,17 +303,19 @@ func (rt *Runtime) Bind(agentID string, cgroupID uint64, compiled policy.Compile
 		agentID:  agentID,
 		cgroupID: cgroupID,
 		policyID: id,
-		out:      ch,
+		out:      ac.ch,
+		done:     ac.done,
 	}, nil
 }
 
 // releaseSlot is the unwind for a partial Bind. Caller holds no lock.
+// The per-agent data channel is intentionally not closed — see agentChan.
 func (rt *Runtime) releaseSlot(cgroupID uint64, id uint32) {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	if ch, ok := rt.chans[cgroupID]; ok {
+	if ac, ok := rt.chans[cgroupID]; ok {
 		delete(rt.chans, cgroupID)
-		close(ch)
+		close(ac.done)
 	}
 	rt.free = append(rt.free, id)
 }
@@ -328,7 +344,7 @@ func (rt *Runtime) fanOut(ctx context.Context) {
 			continue
 		}
 		rt.mu.Lock()
-		ch, ok := rt.chans[ev.CgroupID]
+		ac, ok := rt.chans[ev.CgroupID]
 		rt.mu.Unlock()
 		if !ok {
 			// Event from a cgroup we don't manage. With pol_id=0 the
@@ -336,21 +352,36 @@ func (rt *Runtime) fanOut(ctx context.Context) {
 			// only fires on a Bind/Unbind race or kernel bug.
 			continue
 		}
-		select {
-		case ch <- ev:
-		case <-ctx.Done():
-			return
-		default:
-			rt.log.Warn("dropping event for slow consumer", "cgroup_id", ev.CgroupID)
-		}
+		rt.deliver(ac, ev)
 	}
 }
 
+// deliver sends one event into a per-agent channel. Three outcomes:
+//   - send wins: event is delivered.
+//   - <-ac.done wins: Cleanup ran between the map lookup and the send; drop.
+//   - default wins: buffer full (slow consumer); drop.
+//
+// The data channel is never closed, so the send is panic-free regardless of
+// concurrent Cleanup. ac.done is closed exactly once under rt.mu, so receiving
+// from it cannot race.
+func (rt *Runtime) deliver(ac *agentChan, ev Event) {
+	select {
+	case ac.ch <- ev:
+	case <-ac.done:
+		// agent went away between the map lookup and the send
+	default:
+		rt.log.Warn("dropping event for slow consumer", "cgroup_id", ev.CgroupID)
+	}
+}
+
+// closeAllChans is called by fanOut after the ringbuf reader returns
+// ErrClosed — i.e. there are no more sends to any per-agent channel. It
+// closes each agent's done so any active Handle.Events consumer exits.
 func (rt *Runtime) closeAllChans() {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	for cg, ch := range rt.chans {
-		close(ch)
+	for cg, ac := range rt.chans {
+		close(ac.done)
 		delete(rt.chans, cg)
 	}
 }
@@ -394,12 +425,15 @@ type Handle struct {
 	cgroupID uint64
 	policyID uint32
 	out      chan Event
+	done     chan struct{} // closed by releaseSlot/closeAllChans
 
 	cleanupOnce sync.Once
 }
 
-// Events returns the per-agent event channel. Closed when Cleanup is
-// called or when the runtime shuts down.
+// Events returns the per-agent event channel. The returned channel is
+// closed when Cleanup is called, when the runtime shuts down, or when
+// ctx is done. h.out itself is never closed (see agentChan); shutdown
+// is signalled via h.done.
 func (h *Handle) Events(ctx context.Context) <-chan Event {
 	if h == nil {
 		ch := make(chan Event)
@@ -409,18 +443,33 @@ func (h *Handle) Events(ctx context.Context) <-chan Event {
 	out := make(chan Event, 64)
 	go func() {
 		defer close(out)
+		emit := func(ev Event) bool {
+			ev.AgentID = h.agentID
+			select {
+			case out <- ev:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
 		for {
 			select {
 			case <-ctx.Done():
 				return
-			case ev, ok := <-h.out:
-				if !ok {
-					return
+			case <-h.done:
+				// Drain anything already buffered, then exit.
+				for {
+					select {
+					case ev := <-h.out:
+						if !emit(ev) {
+							return
+						}
+					default:
+						return
+					}
 				}
-				ev.AgentID = h.agentID
-				select {
-				case out <- ev:
-				case <-ctx.Done():
+			case ev := <-h.out:
+				if !emit(ev) {
 					return
 				}
 			}

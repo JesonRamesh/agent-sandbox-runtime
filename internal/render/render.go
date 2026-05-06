@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -74,6 +75,9 @@ func HumanDaemonStatus(w io.Writer, s *client.DaemonStatusResult) {
 	uptime := compactDuration(time.Duration(s.UptimeNS))
 	fmt.Fprintf(w, "protocol: %s\nbuild: %s\nuptime: %s\nagents: %d\n",
 		s.ProtocolVersion, s.Build, uptime, s.AgentsRunning)
+	if s.EventsDropped > 0 {
+		fmt.Fprintf(w, "events_dropped: %d  (audit trail has gaps — pipeline buffer overflowed)\n", s.EventsDropped)
+	}
 }
 
 func compactDuration(d time.Duration) string {
@@ -100,12 +104,33 @@ func JSONErr(w io.Writer, code, message string) error {
 	}{Ok: false, Code: code, Error: message})
 }
 
-// quote wraps s in double quotes if it contains whitespace; bare otherwise.
-// Used by event renderers below.
+// quote wraps s in double quotes if it contains whitespace, a quote, or any
+// C0 control byte. Event payloads originate from agent stdout / LLM tool
+// output / (when authenticated relays are off) the network — none of which
+// is trusted to be free of ANSI terminal escapes. strconv.Quote turns every
+// non-printable byte into its \xNN form so a raw "\x1b[2J" cannot clear the
+// operator's terminal.
 func quote(s string) string {
-	if strings.ContainsAny(s, " \t\n\"") {
+	if hasControl(s) {
+		return strconv.Quote(s)
+	}
+	if strings.ContainsAny(s, " \t\"") {
 		b, _ := json.Marshal(s)
 		return string(b)
 	}
 	return s
+}
+
+// hasControl reports whether s contains any C0 control byte (0x00–0x1F) or
+// DEL (0x7F). Newline and tab are deliberately included — quote() needs to
+// escape them too when they appear in an otherwise printable string, since
+// the existing whitespace branch would lose the literal.
+func hasControl(s string) bool {
+	for i := 0; i < len(s); i++ {
+		b := s[i]
+		if b < 0x20 || b == 0x7F {
+			return true
+		}
+	}
+	return false
 }

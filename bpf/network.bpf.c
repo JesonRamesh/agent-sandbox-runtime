@@ -45,8 +45,32 @@ int BPF_PROG(asb_socket_connect, struct socket *sock, struct sockaddr *address, 
         return 0;   // unmanaged cgroup -> allow
 
     __u16 family = BPF_CORE_READ(address, sa_family);
+    if (family == AF_INET6) {
+        // v6 connects are NOT enforced in v0 — but they used to be silent.
+        // Emit an audit event so the operator's dashboard reflects reality.
+        // Address bytes are recorded for forensics; verdict is AUDIT to
+        // make it visually distinct from an enforced allow.
+        struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)address;
+        struct {
+            struct event_hdr  hdr;
+            struct net_event  net;
+        } *evt6 = bpf_ringbuf_reserve(&events, sizeof(*evt6), 0);
+        if (evt6) {
+            __builtin_memset(evt6, 0, sizeof(*evt6));
+            fill_hdr(&evt6->hdr, EVT_NET_CONNECT, VERDICT_AUDIT);
+            evt6->net.family   = family;
+            evt6->net.dport    = bpf_ntohs(BPF_CORE_READ(sin6, sin6_port));
+            evt6->net._pad     = 0;
+            evt6->net.daddr_v4 = 0;
+            // sizeof(daddr_v6) == sizeof(struct in6_addr) == 16, so reading
+            // the whole sin6_addr struct in one go fills the destination.
+            BPF_CORE_READ_INTO(&evt6->net.daddr_v6, sin6, sin6_addr);
+            bpf_ringbuf_submit(evt6, 0);
+        }
+        return 0;
+    }
     if (family != AF_INET)
-        return 0;   // v6/unix not enforced in v0; emit-only path below would go here
+        return 0;   // unix and other families: out of scope for v0
 
     struct sockaddr_in *sin = (struct sockaddr_in *)address;
     __u32 daddr = BPF_CORE_READ(sin, sin_addr.s_addr);
@@ -62,12 +86,12 @@ int BPF_PROG(asb_socket_connect, struct socket *sock, struct sockaddr *address, 
     } *evt;
     evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
     if (evt) {
+        __builtin_memset(evt, 0, sizeof(*evt));
         fill_hdr(&evt->hdr, EVT_NET_CONNECT, verdict);
         evt->net.family    = family;
         evt->net.dport     = dport;
         evt->net._pad      = 0;
         evt->net.daddr_v4  = daddr;
-        __builtin_memset(evt->net.daddr_v6, 0, 16);
         bpf_ringbuf_submit(evt, 0);
     }
 
@@ -92,12 +116,8 @@ int asb_sendto(struct trace_event_raw_sys_enter *ctx)
     } *evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
     if (!evt)
         return 0;
+    __builtin_memset(evt, 0, sizeof(*evt));
     fill_hdr(&evt->hdr, EVT_NET_SENDTO, VERDICT_AUDIT);
-    evt->net.family   = 0;
-    evt->net.dport    = 0;
-    evt->net._pad     = 0;
-    evt->net.daddr_v4 = 0;
-    __builtin_memset(evt->net.daddr_v6, 0, 16);
     bpf_ringbuf_submit(evt, 0);
     return 0;
 }

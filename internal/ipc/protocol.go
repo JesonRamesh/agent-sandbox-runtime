@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -108,6 +110,43 @@ func (m *Manifest) Validate() error {
 	if len(m.Command) == 0 {
 		return fmt.Errorf("%w: command must have at least one argument", ErrInvalidManifestErr)
 	}
+	// The CLI parser does the same check via internal/manifest, but a client
+	// that talks to the socket directly skips it. The daemon turns this
+	// string into MkdirAll + chdir, so traversal here turns into a daemon-
+	// privileged write to wherever the cleaned path resolves.
+	if m.WorkingDir != "" {
+		if err := validateWorkingDir(m.WorkingDir); err != nil {
+			return fmt.Errorf("%w: %v", ErrInvalidManifestErr, err)
+		}
+	}
+	return nil
+}
+
+// validateWorkingDir is a defensive copy of the CLI-side check kept here so
+// the IPC layer can refuse traversal even from raw socket clients. Keep it
+// in sync with internal/manifest.validWorkingDir.
+func validateWorkingDir(v string) error {
+	if !strings.HasPrefix(v, "/") {
+		return fmt.Errorf("working_dir must be an absolute path")
+	}
+	if strings.ContainsAny(v, "\x00\n\r\t") {
+		return fmt.Errorf("working_dir must not contain control characters")
+	}
+	if strings.Contains(v, "/../") || strings.HasSuffix(v, "/..") || v == ".." {
+		return fmt.Errorf("working_dir must not contain '..' segments")
+	}
+	cleaned := path.Clean(v)
+	if cleaned != v && cleaned+"/" != v {
+		return fmt.Errorf("working_dir must be normalized (got %q, canonical %q)", v, cleaned)
+	}
+	for _, prefix := range []string{
+		"/etc/", "/proc/", "/sys/", "/dev/", "/boot/", "/root/",
+		"/usr/", "/lib/", "/lib64/", "/sbin/", "/bin/",
+	} {
+		if strings.HasPrefix(cleaned+"/", prefix) {
+			return fmt.Errorf("working_dir must not point inside system directory %q", strings.TrimSuffix(prefix, "/"))
+		}
+	}
 	return nil
 }
 
@@ -181,6 +220,11 @@ type DaemonStatusResult struct {
 	Version    string `json:"version"`
 	UptimeSec  int64  `json:"uptime_sec"`
 	AgentCount int    `json:"agent_count"`
+	// EventsDropped is the running total of events the pipeline silently
+	// dropped because the input buffer was full. For an enforcement
+	// product this represents holes in the audit trail; surface it here
+	// so operators (and the dashboard) can see degradation.
+	EventsDropped uint64 `json:"events_dropped"`
 }
 
 // Method names — string-typed because the protocol is stringly-typed and

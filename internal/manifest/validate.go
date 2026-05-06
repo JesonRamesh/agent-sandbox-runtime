@@ -3,6 +3,7 @@ package manifest
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -245,14 +246,95 @@ var knownCapabilities = map[string]struct{}{
 
 // validateForbiddenCaps rejects entries that aren't a known capability name.
 // We use a strict closed set so a typo can't silently disable a deny rule.
+// On unknown names we run a Levenshtein suggest against the closed set so
+// "CAP_SYS_ADIM" hints at "CAP_SYS_ADMIN" rather than dead-ending.
 func validateForbiddenCaps(eb *errBuilder, n *yaml.Node, caps []string) {
 	for i, c := range caps {
 		line, col := childLineCol(n, i)
-		if _, ok := knownCapabilities[c]; !ok {
-			eb.addf(CodeBadCapability, line, col, fmt.Sprintf("forbidden_caps[%d]", i),
-				"unknown capability %q (expected one of CAP_*; see capabilities(7))", c)
+		if _, ok := knownCapabilities[c]; ok {
+			continue
+		}
+		msg := fmt.Sprintf("unknown capability %q (expected one of CAP_*; see capabilities(7))", c)
+		if hint := suggestCapability(c); hint != "" {
+			msg = fmt.Sprintf("%s; did you mean %q?", msg, hint)
+		}
+		eb.addf(CodeBadCapability, line, col, fmt.Sprintf("forbidden_caps[%d]", i), "%s", msg)
+	}
+}
+
+// suggestCapability returns the closest known CAP_ name within edit distance 2
+// of input, or "" if nothing is close enough. Uppercases the input first so
+// "cap_sys_adim" still suggests "CAP_SYS_ADMIN".
+func suggestCapability(input string) string {
+	if input == "" {
+		return ""
+	}
+	candidates := make([]string, 0, len(knownCapabilities))
+	for k := range knownCapabilities {
+		candidates = append(candidates, k)
+	}
+	matches := Suggest(strings.ToUpper(input), candidates, 2)
+	if len(matches) == 0 {
+		return ""
+	}
+	return matches[0]
+}
+
+// workingDirError is the typed error returned by validWorkingDir so the
+// caller can route to the right error code without re-deriving it.
+type workingDirError struct {
+	code Code
+	msg  string
+}
+
+// sensitiveWorkingDirPrefixes blocks manifests from steering the daemon's
+// chdir / MkdirAll into system directories. Even with restrictive
+// permissions a typo here is a foot-gun; the daemon runs with
+// CAP_SYS_ADMIN so MkdirAll can land places the operator did not intend.
+var sensitiveWorkingDirPrefixes = []string{
+	"/etc/", "/proc/", "/sys/", "/dev/", "/boot/", "/root/",
+	"/usr/", "/lib/", "/lib64/", "/sbin/", "/bin/",
+}
+
+// validWorkingDir checks that v is an absolute, normalized path with no
+// traversal segments and not a system directory. The daemon AND the CLI
+// both pre-create this directory; an unvalidated path turns into a
+// silent MkdirAll on whatever traversal resolves to.
+func validWorkingDir(v string) *workingDirError {
+	if !strings.HasPrefix(v, "/") {
+		return &workingDirError{
+			code: CodeNonAbsolutePath,
+			msg:  fmt.Sprintf("%q must be an absolute path; got %q", "working_dir", v),
 		}
 	}
+	if strings.ContainsAny(v, "\x00\n\r\t") {
+		return &workingDirError{
+			code: CodeInvalidPathPattern,
+			msg:  fmt.Sprintf("%q must not contain control characters; got %q", "working_dir", v),
+		}
+	}
+	cleaned := filepath.Clean(v)
+	if cleaned != v && cleaned+"/" != v {
+		return &workingDirError{
+			code: CodeInvalidPathPattern,
+			msg:  fmt.Sprintf("%q must be a normalized path; got %q (canonical form: %q)", "working_dir", v, cleaned),
+		}
+	}
+	if strings.Contains(v, "/../") || strings.HasSuffix(v, "/..") {
+		return &workingDirError{
+			code: CodeInvalidPathPattern,
+			msg:  fmt.Sprintf("%q must not contain '..' segments; got %q", "working_dir", v),
+		}
+	}
+	for _, prefix := range sensitiveWorkingDirPrefixes {
+		if strings.HasPrefix(cleaned+"/", prefix) {
+			return &workingDirError{
+				code: CodeInvalidPathPattern,
+				msg:  fmt.Sprintf("%q must not point inside system directory %q; got %q", "working_dir", strings.TrimSuffix(prefix, "/"), v),
+			}
+		}
+	}
+	return nil
 }
 
 // validStdin accepts "inherit", "close", or "file:<abs-path>". The file:

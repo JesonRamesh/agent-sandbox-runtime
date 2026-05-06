@@ -39,6 +39,10 @@ int asb_sched_exec(struct trace_event_raw_sched_process_exec *ctx)
     } *evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
     if (!evt)
         return 0;
+    // bpf_probe_read_kernel_str only writes up to the NUL terminator; the
+    // tail of evt->e.filename and any other unset bytes would otherwise
+    // leak prior ringbuf contents to userspace. Zero the slot first.
+    __builtin_memset(evt, 0, sizeof(*evt));
 
     fill_hdr(&evt->hdr, EVT_EXEC, VERDICT_AUDIT);
 
@@ -75,6 +79,10 @@ int BPF_PROG(asb_bprm_check, struct linux_binprm *bprm, int ret)
     } *evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
     if (!evt)
         return 0;
+    // Zero the slot before any writes — bpf_probe_read_kernel_str leaves
+    // the tail of evt->e.filename uninitialized if the source is shorter
+    // than MAX_PATH, so prior ringbuf contents would otherwise leak.
+    __builtin_memset(evt, 0, sizeof(*evt));
 
     const char *fn = BPF_CORE_READ(bprm, filename);
     bpf_probe_read_kernel_str(evt->e.filename, MAX_PATH, fn);

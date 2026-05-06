@@ -39,6 +39,11 @@ func newLogsCmd() *cobra.Command {
 				// doesn't silently fetch and discard.
 				return UsageError(fmt.Errorf("--include requires --follow"))
 			}
+			// Validate --tail before opening an IPC connection. Bad input is a
+			// usage error and shouldn't burn a daemon dial.
+			if !follow && tail < 0 {
+				return UsageError(fmt.Errorf("--tail must be >= 0"))
+			}
 
 			cl := rt.newClient()
 			if !follow {
@@ -54,9 +59,6 @@ func newLogsCmd() *cobra.Command {
 }
 
 func runLogsTail(ctx context.Context, rt *appRuntime, cl *client.Client, name string, tail int, include []string) error {
-	if tail < 0 {
-		return UsageError(fmt.Errorf("--tail must be >= 0"))
-	}
 	res, err := cl.AgentLogs(ctx, name, tail)
 	if err != nil {
 		return renderDaemonErr(rt, err)

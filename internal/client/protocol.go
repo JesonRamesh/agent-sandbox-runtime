@@ -177,6 +177,10 @@ type DaemonStatusResult struct {
 	Build           string `json:"build"`
 	UptimeNS        int64  `json:"uptime_ns"`
 	AgentsRunning   int    `json:"agents_running"`
+	// EventsDropped reports the number of events the daemon's pipeline
+	// has dropped (full input buffer). Non-zero means the audit trail
+	// has gaps — surface it in HumanDaemonStatus so operators notice.
+	EventsDropped uint64 `json:"events_dropped,omitempty"`
 }
 
 // --- IngestEvent ---
