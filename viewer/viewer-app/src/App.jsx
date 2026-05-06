@@ -262,9 +262,9 @@ export default function App() {
           onSelectTab={setActiveTab}
         />
 
-        <div className="app__main">
-          {/* Animated ring stats */}
-          <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />
+        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}`}>
+          {/* Animated ring stats — hidden on workflow tab */}
+          {activeTab === 'events' && <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />}
 
           {/* Event panels or workflow graph */}
           {activeTab === 'events' ? (

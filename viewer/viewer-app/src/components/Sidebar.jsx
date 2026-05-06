@@ -113,11 +113,7 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* Policy badge */}
-      <div className="sidebar__policy">
-        <span className="sidebar__policy-icon">🛡</span>
-        <span className="sidebar__policy-text">eBPF Enforcing</span>
-      </div>
+
     </aside>
   );
 }

@@ -64,7 +64,15 @@
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 500px;
+  min-height: 0;
+  height: 100%;
+}
+
+/* ── Workflow tab: make main column a tight flex container, no scroll ──── */
+
+.app__main--workflow {
+  overflow: hidden;
+  justify-content: stretch;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
