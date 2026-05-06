@@ -8,13 +8,13 @@ import (
 // Server error codes (INTERFACES §2.9). Strings are exactly what the daemon
 // emits on the wire.
 const (
-	CodeInvalidManifest   = "INVALID_MANIFEST"
-	CodeAgentNotFound     = "AGENT_NOT_FOUND"
-	CodeCgroupFailed      = "CGROUP_FAILED"
-	CodeBPFLoadFailed     = "BPF_LOAD_FAILED"
-	CodeLaunchFailed      = "LAUNCH_FAILED"
-	CodePermissionDenied  = "PERMISSION_DENIED"
-	CodeInternal          = "INTERNAL"
+	CodeInvalidManifest  = "INVALID_MANIFEST"
+	CodeAgentNotFound    = "AGENT_NOT_FOUND"
+	CodeCgroupFailed     = "CGROUP_FAILED"
+	CodeBPFLoadFailed    = "BPF_LOAD_FAILED"
+	CodeLaunchFailed     = "LAUNCH_FAILED"
+	CodePermissionDenied = "PERMISSION_DENIED"
+	CodeInternal         = "INTERNAL"
 
 	// Client-synthesized (lowercase per DEC-009 / INTERFACES §2.9).
 	CodeDaemonUnreachable = "daemon_unreachable"

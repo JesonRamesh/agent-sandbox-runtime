@@ -254,7 +254,7 @@ func WriteFrame(w io.Writer, payload any) error {
 		return fmt.Errorf("frame too large: %d bytes", len(body))
 	}
 	var hdr [4]byte
-	binary.BigEndian.PutUint32(hdr[:], uint32(len(body)))
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(body))) //nolint:gosec // bounded by maxFrameBytes (16 MiB) check above
 	if _, err := w.Write(hdr[:]); err != nil {
 		return fmt.Errorf("write frame header: %w", err)
 	}

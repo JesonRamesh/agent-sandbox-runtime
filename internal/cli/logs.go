@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -128,7 +127,3 @@ func categoryAllowed(category string, include []string) bool {
 	}
 	return false
 }
-
-// errStreamEnded is the sentinel returned by StreamEvents when the daemon
-// closes the connection. We treat it as a successful exit.
-var errStreamEnded = errors.New("stream ended")

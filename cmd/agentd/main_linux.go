@@ -314,7 +314,7 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		"paths", compiled.NPaths,
 		"bins", compiled.NBins,
 		"mode", compiled.Mode)
-	d.emitEvent(id, uint32(a.PID), "agent.started", map[string]any{
+	d.emitEvent(id, uint32(a.PID), "agent.started", map[string]any{ //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 		"command":     m.Command,
 		"cgroup_path": cg.Path(),
 		"cgroup_id":   cgID,
@@ -384,7 +384,7 @@ func (d *daemon) waitAgent(a *registry.Agent, res *agentResources) {
 		status = "exited"
 	}
 
-	d.emitEvent(a.ID, uint32(a.PID), "agent."+status, map[string]any{
+	d.emitEvent(a.ID, uint32(a.PID), "agent."+status, map[string]any{ //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 		"exit_code":    exitCode,
 		"duration_sec": time.Since(a.StartedAt).Seconds(),
 	})
