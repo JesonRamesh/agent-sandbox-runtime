@@ -11,6 +11,8 @@ import ConnectionTimeline from './components/ConnectionTimeline.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
 import PolicyView from './components/PolicyView.jsx';
+import { fetchPolicies } from './api/daemonApi.js';
+import { MOCK_POLICIES } from './api/mockPolicies.js';
 
 const WS_URL = 'ws://localhost:8765';
 const RECONNECT_DELAY_MS = 3000;
@@ -66,6 +68,16 @@ export default function App() {
   const [lastAnalysisTs, setLastAnalysisTs] = useState(null);
   // 'events' | 'workflow' | 'policies'
   const [activeTab, setActiveTab] = useState('events');
+
+  // Policy count — fetched once on mount so sidebar can show it on all tabs
+  const [policyCount, setPolicyCount] = useState(null);
+
+  // Load policy count once on mount (falls back to mock length if daemon offline)
+  useEffect(() => {
+    fetchPolicies()
+      .then((data) => setPolicyCount((data || []).length))
+      .catch(() => setPolicyCount(MOCK_POLICIES.length));
+  }, []);
 
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -262,6 +274,7 @@ export default function App() {
           wsStatus={wsStatus}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
+          policyCount={policyCount}
         />
 
         <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}${activeTab === 'policies' ? ' app__main--policies' : ''}`}>
@@ -300,7 +313,7 @@ export default function App() {
           {/* ── Policies tab ─────────────────────────────────────────── */}
           {activeTab === 'policies' && (
             <div className="app__policies">
-              <PolicyView />
+              <PolicyView onCountChange={setPolicyCount} />
             </div>
           )}
         </div>

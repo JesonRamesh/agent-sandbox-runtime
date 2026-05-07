@@ -7,7 +7,7 @@ import PolicyDialog from './PolicyDialog.jsx';
 import DaemonHealth from './DaemonHealth.jsx';
 import './PolicyView.css';
 
-export default function PolicyView() {
+export default function PolicyView({ onCountChange }) {
   const [policies, setPolicies]         = useState([]);
   const [loading, setLoading]           = useState(true);
   const [fetchError, setFetchError]     = useState(null);
@@ -23,16 +23,19 @@ export default function PolicyView() {
     setUsingMock(false);
     try {
       const data = await fetchPolicies();
-      setPolicies((data || []).sort((a, b) => a.id - b.id));
+      const sorted = (data || []).sort((a, b) => a.id - b.id);
+      setPolicies(sorted);
+      onCountChange?.(sorted.length);
     } catch (err) {
       // Daemon unreachable — fall back to mock data so the UI is always demo-able
       setFetchError(err.message);
       setPolicies(MOCK_POLICIES);
       setUsingMock(true);
+      onCountChange?.(MOCK_POLICIES.length);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onCountChange]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -57,7 +60,9 @@ export default function PolicyView() {
       // Daemon offline — apply edits locally to mock data so demo still works
       setPolicies((prev) => {
         const without = prev.filter((p) => p.id !== payload.id);
-        return [...without, payload].sort((a, b) => a.id - b.id);
+        const next = [...without, payload].sort((a, b) => a.id - b.id);
+        onCountChange?.(next.length);
+        return next;
       });
       return;
     }

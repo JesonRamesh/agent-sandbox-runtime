@@ -34,6 +34,7 @@ export default function Sidebar({
   wsStatus,
   activeTab,
   onSelectTab,
+  policyCount,
 }) {
   const connected = wsStatus === 'connected';
 
@@ -110,6 +111,12 @@ export default function Sidebar({
           <span className="sidebar__count-label">Blocked</span>
           <span className={`sidebar__count-value ${(stats?.blocked ?? 0) > 0 ? 'sidebar__count-value--bad' : ''}`}>
             {stats?.blocked ?? 0}
+          </span>
+        </div>
+        <div className="sidebar__count-row">
+          <span className="sidebar__count-label">Policies</span>
+          <span className="sidebar__count-value sidebar__count-value--policy">
+            {policyCount ?? '—'}
           </span>
         </div>
       </div>
