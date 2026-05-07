@@ -85,6 +85,30 @@ func TestHumanEvent_TypeSpecificSummarisers(t *testing.T) {
 	}
 }
 
+// Event payloads can carry raw control bytes from agent stdout, LLM tool
+// output, or (in misconfigured deployments) the network. They MUST NOT
+// reach the operator's terminal as live ANSI sequences — `agentctl logs`
+// would otherwise be a remote message-spoof vector.
+func TestHumanEvent_EscapesAnsiControlSequences(t *testing.T) {
+	ev := &client.Event{
+		Schema:   "v1",
+		TS:       "2026-04-29T12:34:56Z",
+		Agent:    "agent",
+		AgentID:  "01A",
+		Category: "agent",
+		Type:     "stdout",
+		// JSON \u001b becomes byte 0x1b once unmarshalled — exactly the form
+		// a hostile event source would use to slip ANSI escapes through.
+		Data: json.RawMessage(`{"line":"\u001b[2J\u001b[31mFAKE\u001b[0m"}`),
+	}
+	var buf bytes.Buffer
+	render.HumanEvent(&buf, ev)
+	out := buf.String()
+	if strings.ContainsRune(out, 0x1b) {
+		t.Errorf("rendered output leaks raw ESC byte:\n%q", out)
+	}
+}
+
 func TestHumanEvent_UnknownTypeFallsBackToJSON(t *testing.T) {
 	ev := &client.Event{
 		Schema:   "v1",

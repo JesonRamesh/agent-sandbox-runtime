@@ -26,9 +26,22 @@ const WebSocket = require('ws');
 const DAEMON_WS  = process.env.DAEMON_WS  || 'ws://127.0.0.1:7443/events';
 const VIEWER_WS  = process.env.VIEWER_WS  || 'ws://127.0.0.1:8765';
 const SENDER     = process.env.SENDER_NAME || 'agentd-bridge';
+// Forwarded to the viewer relay's sender handshake. Must match VIEWER_TOKEN
+// on the relay; if neither side sets one, sender auth is disabled (loopback
+// bind is the access control).
+const VIEWER_TOKEN = process.env.VIEWER_TOKEN || '';
 
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS  = 30_000;
+// Jitter prevents a thundering-herd reconnect when many bridges restart in
+// lockstep (systemd unit restart, daemon bounce). 0–25% multiplicative jitter
+// is enough to spread a hundred reconnects across ~7s when the deterministic
+// delay would have stacked them on a single millisecond.
+const RECONNECT_JITTER_FRAC = 0.25;
+
+function jittered(baseMs) {
+  return Math.floor(baseMs * (1 + Math.random() * RECONNECT_JITTER_FRAC));
+}
 
 function ts() { return new Date().toISOString(); }
 function log(...a) { console.log(`[${ts()}] [bridge]`, ...a); }
@@ -51,14 +64,17 @@ function connectViewer() {
 
   viewerWS.on('open', () => {
     log('viewer: connected; sending sender handshake');
-    viewerWS.send(JSON.stringify({ role: 'sender', name: SENDER }));
+    const handshake = { role: 'sender', name: SENDER };
+    if (VIEWER_TOKEN) handshake.token = VIEWER_TOKEN;
+    viewerWS.send(JSON.stringify(handshake));
     viewerReady = true;
     viewerBackoff = RECONNECT_BASE_MS;
   });
   viewerWS.on('close', (code) => {
-    warn(`viewer: closed (code ${code}); reconnecting in ${viewerBackoff}ms`);
+    const delay = jittered(viewerBackoff);
+    warn(`viewer: closed (code ${code}); reconnecting in ${delay}ms`);
     viewerReady = false;
-    setTimeout(connectViewer, viewerBackoff);
+    setTimeout(connectViewer, delay);
     viewerBackoff = Math.min(viewerBackoff * 2, RECONNECT_MAX_MS);
   });
   viewerWS.on('error', (err) => {
@@ -81,8 +97,9 @@ function connectDaemon() {
     viewerWS.send(data);
   });
   daemonWS.on('close', (code) => {
-    warn(`daemon: closed (code ${code}); reconnecting in ${daemonBackoff}ms`);
-    setTimeout(connectDaemon, daemonBackoff);
+    const delay = jittered(daemonBackoff);
+    warn(`daemon: closed (code ${code}); reconnecting in ${delay}ms`);
+    setTimeout(connectDaemon, delay);
     daemonBackoff = Math.min(daemonBackoff * 2, RECONNECT_MAX_MS);
   });
   daemonWS.on('error', (err) => {

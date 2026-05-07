@@ -12,6 +12,13 @@ import (
 	"time"
 )
 
+// DefaultDialTimeout is the per-call deadline for opening the Unix-socket
+// connection to the daemon. Single source of truth: the CLI and any other
+// in-process consumer should reference this rather than re-defining 5s
+// inline. Tweaking the timeout for a CI environment now means changing one
+// constant.
+const DefaultDialTimeout = 5 * time.Second
+
 // Client talks to a single agentd Unix socket connection.
 //
 // One Client per CLI invocation. Unary methods open a fresh connection per call
@@ -25,7 +32,7 @@ type Client struct {
 // DialOption configures a Client.
 type DialOption func(*Client)
 
-// WithDialTimeout sets the per-Dial timeout. Default is 5 seconds.
+// WithDialTimeout sets the per-Dial timeout. Default is DefaultDialTimeout.
 func WithDialTimeout(d time.Duration) DialOption {
 	return func(c *Client) { c.dialTimeout = d }
 }
@@ -33,7 +40,7 @@ func WithDialTimeout(d time.Duration) DialOption {
 // New constructs a Client. socketPath must be the absolute path to the daemon's
 // Unix domain socket; use ResolveSocketPath to compute it.
 func New(socketPath string, opts ...DialOption) *Client {
-	c := &Client{socketPath: socketPath, dialTimeout: 5 * time.Second}
+	c := &Client{socketPath: socketPath, dialTimeout: DefaultDialTimeout}
 	for _, o := range opts {
 		o(c)
 	}

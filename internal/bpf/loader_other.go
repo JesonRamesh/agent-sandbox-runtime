@@ -42,6 +42,6 @@ func (h *Handle) Events(_ context.Context) <-chan Event {
 	return ch
 }
 
-func (h *Handle) Cleanup() error  { return nil }
+func (h *Handle) Cleanup() error   { return nil }
 func (h *Handle) CgroupID() uint64 { return 0 }
 func (h *Handle) PolicyID() uint32 { return 0 }

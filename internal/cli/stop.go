@@ -9,6 +9,13 @@ import (
 	"github.com/agent-sandbox/runtime/internal/render"
 )
 
+// MaxStopGrace caps --grace at 1h. The daemon's outer shutdown deadline is
+// well below this; a multi-hour grace would let one stuck agent block any
+// other shutdown path that waits on it. Negative values are rejected
+// outright — if a future daemon naively does `time.Sleep(grace)` a negative
+// duration would skip SIGTERM entirely.
+const MaxStopGrace = time.Hour
+
 func newStopCmd() *cobra.Command {
 	var grace time.Duration
 	cmd := &cobra.Command{
@@ -22,6 +29,12 @@ func newStopCmd() *cobra.Command {
 			name := args[0]
 			if name == "" {
 				return UsageError(fmt.Errorf("agent name required"))
+			}
+			if grace < 0 {
+				return UsageError(fmt.Errorf("--grace must be >= 0; got %s", grace))
+			}
+			if grace > MaxStopGrace {
+				return UsageError(fmt.Errorf("--grace must be <= %s; got %s", MaxStopGrace, grace))
 			}
 			cl := rt.newClient()
 			res, err := cl.StopAgent(c.Context(), name, int64(grace))

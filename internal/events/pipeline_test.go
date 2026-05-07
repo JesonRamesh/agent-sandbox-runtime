@@ -157,6 +157,43 @@ func TestSubscriberErrorRemoval(t *testing.T) {
 	}
 }
 
+// A panicking sink must not kill the daemon-wide event delivery; it should
+// be removed and the next event should still reach other subscribers.
+func TestPanickingSubscriberIsRemovedAndOthersKeepReceiving(t *testing.T) {
+	p := newTestPipeline(t, Config{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go p.Run(ctx)
+
+	var bad atomic.Int32
+	unsubBad := p.Subscribe("", func(ev ipc.Event) error {
+		bad.Add(1)
+		panic("boom")
+	})
+	defer unsubBad()
+
+	good := make(chan ipc.Event, 4)
+	unsubGood := p.Subscribe("", func(ev ipc.Event) error {
+		good <- ev
+		return nil
+	})
+	defer unsubGood()
+
+	p.Submit(mkEvent("agt_1", "agent.started"))
+	p.Submit(mkEvent("agt_1", "agent.exited"))
+
+	for i := 0; i < 2; i++ {
+		select {
+		case <-good:
+		case <-time.After(time.Second):
+			t.Fatalf("good subscriber missed event %d after panicking sink", i)
+		}
+	}
+	if got := bad.Load(); got != 1 {
+		t.Errorf("panicking sink was called %d times, want 1 (then removed)", got)
+	}
+}
+
 func TestAgentLogTail(t *testing.T) {
 	dir := t.TempDir()
 	p := newTestPipeline(t, Config{LogDir: dir})

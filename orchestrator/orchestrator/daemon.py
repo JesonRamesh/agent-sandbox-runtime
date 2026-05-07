@@ -61,26 +61,55 @@ class DaemonClient:
         except OSError:
             return False
 
+    @staticmethod
+    def _recv_exact(sock: socket.socket, n: int) -> bytes:
+        """Read exactly n bytes or raise ConnectionError on early EOF.
+
+        socket.recv() may return fewer bytes than requested even on a
+        well-behaved peer — TCP/Unix sockets only guarantee byte ordering,
+        not message boundaries. The frame protocol is length-prefixed, so
+        a single short recv corrupts every subsequent message; loop until
+        we have everything.
+        """
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError(
+                    f"daemon closed connection after {len(buf)}/{n} bytes"
+                )
+            buf.extend(chunk)
+        return bytes(buf)
+
     def _rpc(self, method: str, params: dict) -> dict | None:
         if not self._available:
             label = (params.get("manifest") or {}).get("name") or params.get("agent_id", "")
             print(f"[daemon-stub] {method} {label}")
             return None
+        s = None
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(self._path)
             payload = json.dumps({"method": method, "params": params}).encode()
             s.sendall(struct.pack(">I", len(payload)) + payload)
-            length = struct.unpack(">I", s.recv(4))[0]
-            resp = json.loads(s.recv(length))
-            s.close()
+            length = struct.unpack(">I", self._recv_exact(s, 4))[0]
+            resp = json.loads(self._recv_exact(s, length))
             if not resp.get("ok"):
                 err = resp.get("error", {})
                 print(f"[daemon] {method} error {err.get('code', '?')}: {err.get('message', resp)}")
             return resp
-        except OSError as e:
+        except (OSError, ConnectionError, struct.error, json.JSONDecodeError) as e:
+            # Without struct.error / JSONDecodeError in this catch list the
+            # outer caller saw a Python traceback on any short read and the
+            # socket FD leaked. Now: log, return None, finally close.
             print(f"[daemon] RPC failed: {e}")
             return None
+        finally:
+            if s is not None:
+                try:
+                    s.close()
+                except OSError:
+                    pass
 
     def run_agent(self, manifest: AgentManifest) -> str | None:
         """Launch agent in sandbox. Returns opaque agent_id, or None if daemon unavailable."""

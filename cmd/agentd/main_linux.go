@@ -140,27 +140,55 @@ type agentResources struct {
 	cmd        *exec.Cmd
 	cancelEvts context.CancelFunc
 
-	// closeOnce guards Close so the wait-then-cleanup goroutine and an
-	// explicit StopAgent call don't both try to free the same resources.
-	closeOnce sync.Once
+	// cleanupMu serializes cleanup. Per-step bools below let a transient
+	// failure (a flaky cgroup destroy, e.g.) be retried on the next call:
+	// a successful step is marked done and skipped; a failed step stays
+	// false and is retried. This replaces a sync.Once which would have
+	// suppressed retries on the very steps that failed — leaving (for
+	// example) the BPF map entry behind while the cgroup was already gone.
+	cleanupMu     sync.Mutex
+	evtsCancelled bool
+	bpfFreed      bool
+	cgDestroyed   bool
+
+	// done is closed by waitAgent once cmd.Wait returns. Other code paths
+	// (e.g. shutdown) wait on this instead of calling cmd.Wait themselves
+	// — concurrent Wait calls on *exec.Cmd race on ProcessState and on
+	// the underlying wait4(ECHILD) syscall.
+	done chan struct{}
 }
 
+// cleanup tears down all resources for an agent. Idempotent at the per-step
+// level: each component is attempted only if it hasn't yet succeeded. A
+// transient failure on cgroup destroy doesn't block the BPF map clear, and
+// a subsequent call (from the reaper, shutdown, or a retry path) re-attempts
+// only the failed step.
 func (r *agentResources) cleanup(log *slog.Logger, agentID string) {
-	r.closeOnce.Do(func() {
-		if r.cancelEvts != nil {
-			r.cancelEvts()
+	r.cleanupMu.Lock()
+	defer r.cleanupMu.Unlock()
+
+	if !r.evtsCancelled && r.cancelEvts != nil {
+		r.cancelEvts()
+		r.evtsCancelled = true
+	}
+	if !r.bpfFreed && r.bpfHandle != nil {
+		if err := r.bpfHandle.Cleanup(); err != nil {
+			log.Warn("bpf cleanup (will retry)", "agent_id", agentID, "err", err)
+		} else {
+			r.bpfFreed = true
 		}
-		if r.bpfHandle != nil {
-			if err := r.bpfHandle.Cleanup(); err != nil {
-				log.Warn("bpf cleanup", "agent_id", agentID, "err", err)
-			}
+	} else if r.bpfHandle == nil {
+		r.bpfFreed = true
+	}
+	if !r.cgDestroyed && r.cg != nil {
+		if err := r.cg.Destroy(); err != nil {
+			log.Warn("cgroup destroy (will retry)", "agent_id", agentID, "err", err, "fix", "manually rmdir /sys/fs/cgroup/agent-sandbox/<id> after killing leftover pids")
+		} else {
+			r.cgDestroyed = true
 		}
-		if r.cg != nil {
-			if err := r.cg.Destroy(); err != nil {
-				log.Warn("cgroup destroy", "agent_id", agentID, "err", err, "fix", "manually rmdir /sys/fs/cgroup/agent-sandbox/<id> after killing leftover pids")
-			}
-		}
-	})
+	} else if r.cg == nil {
+		r.cgDestroyed = true
+	}
 }
 
 type daemon struct {
@@ -172,8 +200,14 @@ type daemon struct {
 	keepCrashed time.Duration
 }
 
+// agentIDBytes is the entropy width for new agent IDs. 8 bytes pushes the
+// 50% birthday-collision threshold to ~5 billion agents — enough that a
+// CI/eval host running tens of thousands of agents per day no longer
+// approaches collision territory.
+const agentIDBytes = 8
+
 func newAgentID() string {
-	var b [4]byte
+	var b [agentIDBytes]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return fmt.Sprintf("agt_%x", time.Now().UnixNano())
 	}
@@ -190,7 +224,14 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		return "", fmt.Errorf("%w: %v", ipc.ErrInvalidManifestErr, err)
 	}
 
+	// Generate an ID and pre-check the registry. With 8 bytes of entropy a
+	// collision is astronomically unlikely, but if it ever happens (or if
+	// crypto/rand fell back to the time-based ID), retry once with fresh
+	// bytes before giving up.
 	id := newAgentID()
+	if _, exists := d.registry.Get(id); exists {
+		id = newAgentID()
+	}
 	log := d.log.With("agent_id", id, "phase", "RunAgent")
 
 	cg, err := cgroup.Create(id)
@@ -244,6 +285,7 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		bpfHandle:  bh,
 		cmd:        cmd,
 		cancelEvts: cancelEvts,
+		done:       make(chan struct{}),
 	}
 
 	a := &registry.Agent{
@@ -272,7 +314,7 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		"paths", compiled.NPaths,
 		"bins", compiled.NBins,
 		"mode", compiled.Mode)
-	d.emitEvent(id, uint32(a.PID), "agent.started", map[string]any{
+	d.emitEvent(id, uint32(a.PID), "agent.started", map[string]any{ //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 		"command":     m.Command,
 		"cgroup_path": cg.Path(),
 		"cgroup_id":   cgID,
@@ -324,6 +366,9 @@ func (d *daemon) streamBPFEvents(ctx context.Context, agentID string, bh *bpf.Ha
 
 func (d *daemon) waitAgent(a *registry.Agent, res *agentResources) {
 	err := res.cmd.Wait()
+	// Signal everyone waiting on this agent (notably shutdown) that Wait
+	// has happened and ProcessState is now safe to read.
+	close(res.done)
 
 	exitCode := -1
 	if res.cmd.ProcessState != nil {
@@ -339,7 +384,7 @@ func (d *daemon) waitAgent(a *registry.Agent, res *agentResources) {
 		status = "exited"
 	}
 
-	d.emitEvent(a.ID, uint32(a.PID), "agent."+status, map[string]any{
+	d.emitEvent(a.ID, uint32(a.PID), "agent."+status, map[string]any{ //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 		"exit_code":    exitCode,
 		"duration_sec": time.Since(a.StartedAt).Seconds(),
 	})
@@ -424,16 +469,31 @@ func (d *daemon) shutdown() {
 		if res.cmd != nil && res.cmd.Process != nil {
 			_ = res.cmd.Process.Signal(syscall.SIGTERM)
 		}
-		// Give the process a moment to handle SIGTERM gracefully.
-		done := make(chan struct{})
-		go func() {
-			res.cmd.Wait() //nolint:errcheck // Wait may already have happened in waitAgent
-			close(done)
-		}()
+		// Wait for waitAgent's cmd.Wait to return — never call Wait here
+		// concurrently. *exec.Cmd's Wait is not safe to call twice on the
+		// same Cmd; the second call would race on ProcessState. If the
+		// process doesn't honor SIGTERM in 2s, escalate to SIGKILL and
+		// keep waiting (waitAgent will reap the result either way).
+		if res.done == nil {
+			// Defensive: an agent constructed by an older code path or by
+			// a test fixture may not have a done chan. Skip rather than
+			// nil-deref.
+			res.cleanup(d.log, a.ID)
+			d.registry.Remove(a.ID)
+			continue
+		}
 		select {
-		case <-done:
+		case <-res.done:
 		case <-time.After(2 * time.Second):
-			_ = res.cmd.Process.Kill()
+			if res.cmd != nil && res.cmd.Process != nil {
+				_ = res.cmd.Process.Kill()
+			}
+			select {
+			case <-res.done:
+			case <-time.After(2 * time.Second):
+				d.log.Warn("waitAgent did not return after kill; proceeding with cleanup",
+					"agent_id", a.ID)
+			}
 		}
 		res.cleanup(d.log, a.ID)
 		d.registry.Remove(a.ID)
@@ -482,9 +542,10 @@ func (d *daemon) StreamEvents(ctx context.Context, agentID string, sink func(ipc
 
 func (d *daemon) DaemonStatus(_ context.Context) (ipc.DaemonStatusResult, error) {
 	return ipc.DaemonStatusResult{
-		Version:    daemonVersion,
-		UptimeSec:  int64(time.Since(d.startedAt).Seconds()),
-		AgentCount: len(d.registry.List()),
+		Version:       daemonVersion,
+		UptimeSec:     int64(time.Since(d.startedAt).Seconds()),
+		AgentCount:    len(d.registry.List()),
+		EventsDropped: d.pipeline.DroppedCount(),
 	}, nil
 }
 

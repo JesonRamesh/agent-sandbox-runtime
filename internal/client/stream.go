@@ -15,7 +15,7 @@ func WriteFrame(w io.Writer, body []byte) error {
 		return ErrFrameOversize
 	}
 	var hdr [4]byte
-	binary.BigEndian.PutUint32(hdr[:], uint32(len(body)))
+	binary.BigEndian.PutUint32(hdr[:], uint32(len(body))) //nolint:gosec // bounded by MaxFrameBytes check above
 	if _, err := w.Write(hdr[:]); err != nil {
 		return fmt.Errorf("write frame header: %w", err)
 	}

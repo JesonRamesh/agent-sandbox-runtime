@@ -59,10 +59,10 @@ type WireError struct {
 // Fields outside `manifest` (like restart_on_crash and max_restarts) are
 // adjacent to the resolved manifest, not nested in it (DEC-012).
 type RunAgentRequest struct {
-	Manifest        ManifestPayload `json:"manifest"`
-	ManifestSource  ManifestSource  `json:"manifest_source"`
-	RestartOnCrash  bool            `json:"restart_on_crash"`
-	MaxRestarts     int             `json:"max_restarts"`
+	Manifest       ManifestPayload `json:"manifest"`
+	ManifestSource ManifestSource  `json:"manifest_source"`
+	RestartOnCrash bool            `json:"restart_on_crash"`
+	MaxRestarts    int             `json:"max_restarts"`
 }
 
 // ManifestPayload mirrors the manifest.Manifest JSON shape so the daemon can
@@ -92,12 +92,12 @@ type ManifestSource struct {
 
 // RunAgentResult is the success result for MethodRunAgent.
 type RunAgentResult struct {
-	Name           string `json:"name"`
-	AgentID        string `json:"agent_id"`
-	PID            int    `json:"pid"`
-	CgroupPath     string `json:"cgroup_path"`
-	StartedAt      string `json:"started_at"`
-	PolicySummary  string `json:"policy_summary"`
+	Name          string `json:"name"`
+	AgentID       string `json:"agent_id"`
+	PID           int    `json:"pid"`
+	CgroupPath    string `json:"cgroup_path"`
+	StartedAt     string `json:"started_at"`
+	PolicySummary string `json:"policy_summary"`
 }
 
 // --- ListAgents ---
@@ -177,6 +177,10 @@ type DaemonStatusResult struct {
 	Build           string `json:"build"`
 	UptimeNS        int64  `json:"uptime_ns"`
 	AgentsRunning   int    `json:"agents_running"`
+	// EventsDropped reports the number of events the daemon's pipeline
+	// has dropped (full input buffer). Non-zero means the audit trail
+	// has gaps — surface it in HumanDaemonStatus so operators notice.
+	EventsDropped uint64 `json:"events_dropped,omitempty"`
 }
 
 // --- IngestEvent ---

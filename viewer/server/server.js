@@ -21,10 +21,25 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT) || 8765;
+// Default loopback-only: the relay forwards privileged kernel events with no
+// origin check or per-event signature, so the only thing keeping a network
+// peer from spoofing or harvesting them is who can reach the socket.
+// Override via HOST=0.0.0.0 only if you understand and accept that exposure.
+const HOST = process.env.HOST || '127.0.0.1';
 const HANDSHAKE_TIMEOUT_MS = 3000;
 const MOCK_INTERVAL_MS = 2000;
 const MOCK_ENABLED = process.env.MOCK_EVENTS === '1';
 const SERVE_STATIC = process.env.SERVE_STATIC === '1';
+// Optional shared secret. When set, the sender handshake must include
+// { token: VIEWER_TOKEN } or it will be rejected. Viewers are unauthenticated
+// (loopback bind is the access control there).
+const VIEWER_TOKEN = process.env.VIEWER_TOKEN || '';
+// Cap individual WebSocket frames so a hostile sender cannot drive memory
+// growth via a single huge message.
+const WS_MAX_PAYLOAD = Number(process.env.WS_MAX_PAYLOAD) || 1 * 1024 * 1024;
+// Drop a viewer whose internal send buffer exceeds this — slow viewers must
+// not back up the relay across all other consumers.
+const WS_MAX_BUFFER  = Number(process.env.WS_MAX_BUFFER) || 8 * 1024 * 1024;
 
 // dist/ lives next to viewer-app/, which lives next to server/.
 const DIST_ROOT = path.resolve(__dirname, '..', 'viewer-app', 'dist');
@@ -72,18 +87,39 @@ function broadcastToViewers(rawJson, fromClient) {
 
   if (viewers.size === 0) return;
   let delivered = 0;
-  for (const viewer of viewers) {
-    if (viewer.ws.readyState === WebSocket.OPEN) {
-      viewer.ws.send(rawJson);
-      delivered += 1;
+  let dropped = 0;
+  // Iterate over a snapshot so we can mutate viewers as we go.
+  for (const viewer of [...viewers]) {
+    if (viewer.ws.readyState !== WebSocket.OPEN) continue;
+    if (viewer.ws.bufferedAmount > WS_MAX_BUFFER) {
+      // Slow viewer: closing 1011 is "internal error", which is the closest
+      // standard code for "we're dropping you to protect everyone else".
+      warn(`dropping slow viewer ${describe(viewer)} (bufferedAmount=${viewer.ws.bufferedAmount})`);
+      try { viewer.ws.close(1011, 'backpressure'); } catch (_) {}
+      viewers.delete(viewer);
+      dropped += 1;
+      continue;
+    }
+    viewer.ws.send(rawJson);
+    delivered += 1;
+  }
+  if (fromClient) {
+    if (dropped > 0) {
+      log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s), dropped ${dropped} slow`);
+    } else {
+      log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s)`);
     }
   }
-  if (fromClient) log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s)`);
 }
 
 function handleHandshake(client, msg) {
   const role = msg && msg.role;
   if (role === 'sender') {
+    if (VIEWER_TOKEN && msg.token !== VIEWER_TOKEN) {
+      warn(`handshake: ${describe(client)} rejected (sender token mismatch)`);
+      try { client.ws.close(4401, 'unauthorized'); } catch (_) {}
+      return false;
+    }
     client.role = 'sender';
     client.name = typeof msg.name === 'string' ? msg.name : 'unnamed-sender';
     senders.add(client);
@@ -97,6 +133,7 @@ function handleHandshake(client, msg) {
     client.role = 'viewer';
     viewers.add(client);
   }
+  return true;
 }
 
 function defaultToViewer(client) {
@@ -224,16 +261,20 @@ function handleHttpRequest(req, res) {
 // and intercepts only Upgrade requests, leaving plain GETs to handleHttpRequest.
 // ---------------------------------------------------------------------------
 const httpServer = http.createServer(handleHttpRequest);
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ server: httpServer, maxPayload: WS_MAX_PAYLOAD });
 
 httpServer.on('listening', () => {
-  log(`WebSocket relay listening on ws://localhost:${PORT}`);
+  log(`WebSocket relay listening on ws://${HOST}:${PORT}`);
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost' && HOST !== '::1') {
+    warn(`HOST=${HOST} binds non-loopback — kernel events are exposed to anything that can reach this port. Set VIEWER_TOKEN to require sender authentication.`);
+  }
   if (SERVE_STATIC) {
-    log(`serving dashboard at http://localhost:${PORT}  (dist: ${DIST_ROOT})`);
+    log(`serving dashboard at http://${HOST}:${PORT}  (dist: ${DIST_ROOT})`);
   } else {
     log('static dashboard: disabled (set SERVE_STATIC=1 to enable)');
   }
   log(`mock events: ${MOCK_ENABLED ? 'ENABLED (every ' + MOCK_INTERVAL_MS + 'ms)' : 'disabled'}`);
+  log(`sender auth: ${VIEWER_TOKEN ? 'required (VIEWER_TOKEN set)' : 'disabled (set VIEWER_TOKEN to require)'}`);
 });
 
 httpServer.on('error', (err) => {
@@ -273,6 +314,8 @@ wss.on('connection', (ws, req) => {
         return;
       }
       handleHandshake(client, parsed);
+      // handleHandshake closes the socket on auth failure; the close event
+      // will run removeClient. Nothing else to do here.
       return;
     }
 
@@ -313,7 +356,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-httpServer.listen(PORT);
+httpServer.listen(PORT, HOST);
 
 // Optional mock event emitter so the pipeline can be tested without P2/P4.
 // Plays a scripted demo session in order, then pauses and repeats.
