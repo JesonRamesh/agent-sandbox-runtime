@@ -22,6 +22,7 @@
 // =============================================================================
 
 const WebSocket = require('ws');
+const { transformDaemonEvent } = require('./transform');
 
 const DAEMON_WS  = process.env.DAEMON_WS  || 'ws://127.0.0.1:7443/events';
 const VIEWER_WS  = process.env.VIEWER_WS  || 'ws://127.0.0.1:8765';
@@ -56,6 +57,12 @@ let viewerWS = null;
 let viewerReady = false;
 let daemonBackoff = RECONNECT_BASE_MS;
 let viewerBackoff = RECONNECT_BASE_MS;
+
+// agent_id → friendly manifest name. Populated as `agent.started` events
+// arrive; consulted by the transform when building UI events. Survives
+// daemon reconnects (a restarted daemon will issue fresh agent.started
+// frames for the agents it relaunches).
+const agentNames = new Map();
 
 function connectViewer() {
   log(`viewer: dial ${VIEWER_WS}`);
@@ -93,8 +100,21 @@ function connectDaemon() {
   });
   daemonWS.on('message', (data) => {
     if (!viewerReady || viewerWS.readyState !== WebSocket.OPEN) return;
-    // Daemon sends one JSON event per frame; pass through verbatim.
-    viewerWS.send(data);
+    // The daemon's wire schema (docs/INTERFACES.md §4) does not match the
+    // shape the browser viewer consumes (viewer-app/src/App.jsx). Translate
+    // here — the bridge is the natural adapter point. transform.js returns
+    // null for events the UI does not model (lifecycle agent.started, llm.*,
+    // unknowns); we drop those silently so the UI sees a clean stream.
+    let raw;
+    try {
+      raw = JSON.parse(data.toString());
+    } catch (err) {
+      warn(`daemon: dropping malformed JSON frame: ${err.message}`);
+      return;
+    }
+    const ui = transformDaemonEvent(raw, agentNames);
+    if (ui === null) return;
+    viewerWS.send(JSON.stringify(ui));
   });
   daemonWS.on('close', (code) => {
     const delay = jittered(daemonBackoff);

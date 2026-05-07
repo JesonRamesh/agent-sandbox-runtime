@@ -2,12 +2,27 @@
 
 .app {
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto auto auto 1fr;
   height: 100vh;
   max-width: 1600px;
   margin: 0 auto;
   padding: 16px 20px 20px;
   gap: 12px;
+  position: relative;
+}
+
+/* The detail panel slides in over the right column when a kernel row is
+   clicked. Position it absolutely so the rest of the layout doesn't reflow. */
+.app__detail-overlay {
+  position: fixed;
+  top: 80px;
+  right: max(20px, calc((100vw - 1600px) / 2 + 20px));
+  width: 460px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 100px);
+  z-index: 20;
+  display: flex;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
 }
 
 .app__panels {

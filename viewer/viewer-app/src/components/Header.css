@@ -35,6 +35,33 @@
   color: var(--text-faint);
 }
 
+.header__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.header__reset {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+}
+.header__reset:hover:not(:disabled) {
+  border-color: var(--accent-red);
+  color: var(--accent-red);
+  background: rgba(255, 77, 94, 0.08);
+}
+.header__reset:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .header__status {
   display: flex;
   align-items: center;

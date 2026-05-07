@@ -1,0 +1,22 @@
+# Scenario 2 — NETWORK PILLAR DENY.
+# allowed_hosts only has 1.1.1.1. Agent tries 8.8.8.8 → kernel returns EPERM.
+name: scenario-2-network-deny
+mode: enforce
+command:
+  - python3
+  - -c
+  - |
+    import socket, sys
+    print("[scenario-2] connecting 8.8.8.8:53 (NOT on allow-list) ...")
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        print("[scenario-2] FAIL: kernel did not block"); sys.exit(1)
+    except OSError as e:
+        print(f"[scenario-2] OK: kernel denied connect() errno={e.errno} ({e.strerror})")
+allowed_hosts:
+  - 1.1.1.1:80
+allowed_paths:
+  - /
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps: []

@@ -2,7 +2,7 @@
 
 .event-row {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: auto auto auto 1fr;
   align-items: baseline;
   gap: 10px;
   padding: 6px 12px;
@@ -13,6 +13,47 @@
   color: var(--text);
   word-break: break-word;
 }
+
+/* Kernel rows are buttons so the user can click to open the detail panel.
+   Override the default <button> chrome — we want them to look identical to
+   the original <div> rows but accept :focus + click. */
+.event-row--button {
+  background: transparent;
+  text-align: left;
+  width: 100%;
+  border-top: none;
+  border-right: none;
+  cursor: pointer;
+  font: inherit;
+}
+.event-row--button:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.event-row--button.is-selected {
+  background: rgba(74, 158, 255, 0.10);
+  outline: 1px solid var(--type-tool-call);
+}
+
+/* Pillar tag (file/exec/cred/net) — small monochrome chip that sits between
+   the timestamp and the verdict badge. */
+.event-row__pillar {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  border: 1px solid var(--border-strong);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.event-row__pillar.pillar-net  { color: #7fb3ff; border-color: #2c4a6e; }
+.event-row__pillar.pillar-file { color: #f0c674; border-color: #5a4920; }
+.event-row__pillar.pillar-exec { color: #c4a7e7; border-color: #4b3c66; }
+.event-row__pillar.pillar-cred { color: #f29ebf; border-color: #5d3041; }
+
+.event-row__target { white-space: pre-wrap; }
+.event-row__reason { color: var(--text-faint); }
 
 .event-row__time {
   color: var(--text-faint);
@@ -48,21 +89,33 @@
 .event-row.type-stopped   .event-row__badge { color: var(--type-stopped); background: rgba(60, 215, 132, 0.10); }
 .event-row.type-crashed   .event-row__badge { color: var(--type-crashed); background: rgba(255, 77, 94, 0.12); }
 
-/* Kernel types */
-.event-row.type-connect_attempt { border-left-color: var(--type-attempt); }
-.event-row.type-connect_allowed { border-left-color: var(--type-allowed); }
-.event-row.type-connect_blocked {
+/* Kernel types — pillar × verdict. Border-left colour is keyed off the
+   verdict (green allow, red block) so the eye reads vertical bars; the
+   pillar chip on each row identifies WHICH pillar fired. */
+.event-row.verdict-allow { border-left-color: var(--type-allowed); }
+.event-row.verdict-block {
   border-left-color: var(--type-blocked);
-  color: var(--text);
   font-weight: 600;
   animation: bgflash-strong 1.8s ease-out 1;
 }
 
-.event-row.type-connect_attempt .event-row__badge { color: var(--type-attempt); }
-.event-row.type-connect_allowed .event-row__badge { color: var(--type-allowed); background: rgba(60, 215, 132, 0.10); }
-.event-row.type-connect_blocked .event-row__badge {
+.event-row .event-row__badge.verdict-allow {
+  color: var(--type-allowed);
+  background: rgba(60, 215, 132, 0.10);
+}
+.event-row .event-row__badge.verdict-block {
   color: var(--type-blocked);
   background: rgba(255, 77, 94, 0.18);
+}
+
+/* Legacy kernel types kept for back-compat with mock streams that may still
+   send connect_attempt/_allowed/_blocked. Real streams now use pillar types. */
+.event-row.type-connect_attempt { border-left-color: var(--type-attempt); }
+.event-row.type-connect_allowed { border-left-color: var(--type-allowed); }
+.event-row.type-connect_blocked {
+  border-left-color: var(--type-blocked);
+  font-weight: 600;
+  animation: bgflash-strong 1.8s ease-out 1;
 }
 
 @keyframes bgflash {

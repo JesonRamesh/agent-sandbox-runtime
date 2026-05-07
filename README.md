@@ -130,43 +130,75 @@ The daemon must run as root (or with `CAP_BPF + CAP_NET_ADMIN +
 CAP_SYS_ADMIN`) to load eBPF. It stays in the foreground; leave this
 terminal open. You'll see startup logs ending in `daemon listening`.
 
-### Step 6 — start the live dashboard (terminal #2, optional)
+### Step 6 — install the dashboard's sudoers fragment (one time)
+
+The dashboard's "run scenario" buttons spawn `agentctl run` against the
+root-owned daemon socket. This one-line script installs a tightly-scoped
+`/etc/sudoers.d/` fragment that lets the unprivileged viewer process
+do exactly that — and *only* that — without a password prompt:
 
 ```bash
-bash viewer/scripts/start-viewer.sh
+sudo bash scripts/install-viewer-sudoers.sh
 ```
 
-Open **`http://127.0.0.1:8765`** in your normal Mac/host browser
-(Lima and Vagrant auto-forward loopback ports). Two panes appear: LLM
-events on the left, kernel events on the right. Real events stream in
-once you launch an agent. The viewer also spawns a small bridge
-process that subscribes to the daemon's event stream — so kernel
-events show up in the dashboard automatically.
+The grant covers only `agentctl run -f <playground-dir>/*` against the
+well-known socket path. Skip this step if you only intend to run agents
+manually via `sudo ./bin/agentctl …` from a terminal — the dashboard
+will still show events, just without the in-browser run buttons.
 
-### Step 7 — run an agent (terminal #3)
+### Step 7 — start the live dashboard (terminal #2)
 
 ```bash
-# A manifest with no allowed_hosts — every connect should be denied.
-sudo ./bin/agentctl --socket=/run/agent-sandbox.sock \
-  run -f examples/blocked-net.yaml
-# expected: agent prints "OK: kernel denied connect errno=1"
-
-# A manifest with 1.1.1.1 in allowed_hosts — same connect should succeed.
-sudo ./bin/agentctl --socket=/run/agent-sandbox.sock \
-  run -f examples/allowed-net.yaml
-# expected: agent prints "OK: connect succeeded"
+HOST=0.0.0.0 bash viewer/scripts/start-viewer.sh
 ```
 
-Watch the dashboard while you do this — you'll see the deny event
-appear in red on the right pane.
+Open **`http://127.0.0.1:8765`** in your host browser (Lima and Vagrant
+auto-forward loopback ports; `HOST=0.0.0.0` is required so VirtualBox's
+NAT-to-loopback forward actually reaches the Node process inside the
+guest). The dashboard gives you:
 
-For a complete smoke test that asserts both verdicts in one go:
+- A **demo scenarios** strip at the top with one ▶ button per manifest in
+  [`examples/playground/`](examples/playground/). Click to fire; the
+  button shows ✓ or ✗ when done.
+- A **▸ permissions** toggle next to each scenario that expands to a
+  4-pillar (NET / FILE / EXEC / CRED) card showing what the manifest
+  allows in plain English — colour-coded by tone (red restrictive,
+  yellow permissive, green allow).
+- A **per-pillar stats row** with allowed / blocked counters per pillar
+  plus tool-call count and uptime; the blocked counter pulses red when
+  it ticks up.
+- The **kernel events pane** shows every verdict with a pillar chip
+  (`NET` / `FILE` / `EXEC` / `CRED`), an `ALLOW` / `BLOCK` badge, and
+  the daemon's plain-English deny reason
+  (e.g. *"8.8.8.8:53 not in allowed_hosts [1.1.1.1:80]"*).
+- **Click any kernel row** → side panel with full event detail
+  (matched rule, reason code, raw JSON). Esc closes it.
+- A **↺ reset** button (top-right) clears the dashboard back to its
+  initial state without dropping the WebSocket connection.
+
+### Step 8 — run an agent
+
+You can either click ▶ on a dashboard scenario, or fire one from a
+shell:
+
+```bash
+sudo ./bin/agentctl --socket=/run/agent-sandbox.sock \
+  run -f examples/playground/02-network-deny.yaml
+# expected: agent prints "OK: kernel denied connect() errno=1"
+
+sudo ./bin/agentctl --socket=/run/agent-sandbox.sock \
+  run -f examples/playground/01-baseline-allowed.yaml
+# expected: agent prints "DONE — all actions allowed"
+```
+
+For a complete smoke test that asserts the original net-pillar verdicts
+in one go:
 
 ```bash
 sudo bash examples/test-it.sh
 ```
 
-### Step 8 — write your own manifest
+### Step 9 — write your own manifest
 
 ```yaml
 # my-agent.yaml
@@ -241,15 +273,22 @@ limactl delete agentsandbox
 
 ## Components
 
-| Subtree            | Language     | Purpose                                                            |
-|--------------------|--------------|--------------------------------------------------------------------|
-| `bpf/`             | C (eBPF)     | Kernel-side policy engine — LSM hooks for net, file, exec, creds   |
-| `cmd/agentd/`      | Go           | The privileged daemon — cgroup + BPF + process lifecycle           |
-| `cmd/agentctl/`    | Go           | The CLI — manifest validation, daemon RPC, event tail              |
-| `cmd/test-client/` | Go           | A raw IPC client for protocol testing                              |
-| `internal/`        | Go           | Shared libraries — `bpf`, `cgroup`, `events`, `ipc`, `policy`, etc.|
-| `orchestrator/`    | Python       | LLM-driven launcher and prompt-injection demo                      |
-| `viewer/`          | Node + React | Real-time event dashboard + daemon bridge                          |
+| Subtree                       | Language     | Purpose                                                            |
+|-------------------------------|--------------|--------------------------------------------------------------------|
+| `bpf/`                        | C (eBPF)     | Kernel-side policy engine — LSM hooks for net, file, exec, creds   |
+| `cmd/agentd/`                 | Go           | The privileged daemon — cgroup + BPF + process lifecycle           |
+| `cmd/agentctl/`               | Go           | The CLI — manifest validation, daemon RPC, event tail              |
+| `cmd/test-client/`            | Go           | A raw IPC client for protocol testing                              |
+| `internal/`                   | Go           | Shared libraries — `bpf`, `cgroup`, `events`, `ipc`, `policy`, etc.|
+| `internal/policy/attribute.go`| Go           | Userspace post-hoc explanation of every kernel verdict (drives the dashboard's deny-reason text) |
+| `orchestrator/`               | Python       | LLM-driven launcher and prompt-injection demo                      |
+| `viewer/server/`              | Node         | WebSocket relay + bridge from `agentd` + scenario-runner HTTP API  |
+| `viewer/server/transform.js`  | Node         | Daemon→UI event schema translator (pillar-aware types, friendly agent names) |
+| `viewer/server/runner.js`     | Node         | Sandboxed `agentctl run` spawner backing the dashboard's ▶ buttons |
+| `viewer/server/manifest.js`   | Node         | Tiny YAML reader + permissions summarizer for the ▸ permissions panel |
+| `viewer/viewer-app/`          | React        | Dashboard UI — pillar stats, kernel rows, event detail, scenario runner |
+| `examples/playground/`        | YAML         | Demo manifests the dashboard's ▶ buttons fire (one per pillar)     |
+| `scripts/install-viewer-sudoers.sh` | bash    | Installs the tightly-scoped sudoers fragment the relay needs to spawn `agentctl run` |
 
 ## License
 

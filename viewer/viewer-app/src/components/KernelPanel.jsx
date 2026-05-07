@@ -9,24 +9,27 @@ function formatTime(ts) {
     String(d.getMilliseconds()).padStart(3, '0');
 }
 
-function renderContent(event) {
+// One row's primary text (left of the expand chevron). The bridge transform
+// fills `data.target` for every pillar; we just decorate it with an icon
+// reflecting the verdict.
+function renderTarget(event) {
   const d = event.data || {};
-  const target = d.hostname
-    ? `${d.hostname} (${d.dst_ip}:${d.dst_port})`
-    : `${d.dst_ip}:${d.dst_port}`;
-  switch (event.type) {
-    case 'connect_attempt':
-      return `→ ${target}`;
-    case 'connect_allowed':
-      return `✓ ${target} — ${d.reason || 'allowed'}`;
-    case 'connect_blocked':
-      return `✗ ${target} — ${d.reason || 'blocked'}`;
-    default:
-      return JSON.stringify(d);
-  }
+  const target = d.target || d.hostname || '(unknown)';
+  if (event.type.endsWith('_blocked')) return `✗ ${target}`;
+  if (event.type === 'stopped' || event.type === 'crashed') return target;
+  return `✓ ${target}`;
 }
 
-export default function KernelPanel({ events }) {
+// Map UI types to pillar keys for badge styling. Keep this in lockstep with
+// the bridge transform's UI_KERNEL_TYPES.
+const PILLAR_OF_TYPE = {
+  net_allowed:  'net',  net_blocked:  'net',
+  file_allowed: 'file', file_blocked: 'file',
+  exec_allowed: 'exec', exec_blocked: 'exec',
+  cred_allowed: 'cred', cred_blocked: 'cred',
+};
+
+export default function KernelPanel({ events, selectedEventId, onSelectEvent }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -45,13 +48,37 @@ export default function KernelPanel({ events }) {
         {events.length === 0 ? (
           <div className="panel__empty">waiting for kernel events…</div>
         ) : (
-          events.map((event) => (
-            <div key={event._id} className={`event-row type-${event.type}`}>
-              <span className="event-row__time">{formatTime(event.ts)}</span>
-              <span className="event-row__badge">{event.type}</span>
-              <span className="event-row__content">{renderContent(event)}</span>
-            </div>
-          ))
+          events.map((event) => {
+            const d = event.data || {};
+            const pillar = PILLAR_OF_TYPE[event.type] || 'meta';
+            const verdict = event.type.endsWith('_blocked') ? 'block' : 'allow';
+            const isSelected = selectedEventId === event._id;
+            return (
+              <button
+                key={event._id}
+                type="button"
+                onClick={() => onSelectEvent && onSelectEvent(isSelected ? null : event._id)}
+                className={
+                  `event-row event-row--button` +
+                  ` type-${event.type}` +
+                  ` pillar-${pillar} verdict-${verdict}` +
+                  (isSelected ? ' is-selected' : '')
+                }
+              >
+                <span className="event-row__time">{formatTime(event.ts)}</span>
+                <span className={`event-row__pillar pillar-${pillar}`}>{pillar}</span>
+                <span className={`event-row__badge verdict-${verdict}`}>
+                  {verdict === 'block' ? 'BLOCK' : 'ALLOW'}
+                </span>
+                <span className="event-row__content">
+                  <span className="event-row__target">{renderTarget(event)}</span>
+                  {d.reason && (
+                    <span className="event-row__reason"> — {d.reason}</span>
+                  )}
+                </span>
+              </button>
+            );
+          })
         )}
         <div ref={bottomRef} />
       </div>

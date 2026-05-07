@@ -1,0 +1,21 @@
+# Scenario 1 — BASELINE (everything the agent does is on the allow-list).
+# Expected: every action succeeds. Dashboard shows ALLOW events.
+name: scenario-1-baseline-allowed
+mode: enforce
+command:
+  - python3
+  - -c
+  - |
+    import socket, sys
+    print("[scenario-1] connecting 1.1.1.1:80 (allowed) ...")
+    s = socket.create_connection(("1.1.1.1", 80), timeout=5); s.close()
+    print("[scenario-1] reading /etc/hostname (allowed) ...")
+    print("[scenario-1] hostname:", open("/etc/hostname").read().strip())
+    print("[scenario-1] DONE — all actions allowed")
+allowed_hosts:
+  - 1.1.1.1:80
+allowed_paths:
+  - /
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps: []

@@ -1,17 +1,18 @@
 .stats-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, 1fr) repeat(2, 0.7fr);
   gap: 10px;
 }
 
 .stats-row__card {
-  padding: 12px 14px;
+  padding: 10px 12px;
   background: var(--panel-bg);
   border: 1px solid var(--border);
   border-radius: 6px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  min-height: 64px;
 }
 
 .stats-row__value {
@@ -30,21 +31,62 @@
   letter-spacing: 0.5px;
 }
 
-.stats-row__card.tone-good .stats-row__value { color: var(--accent-green); }
-.stats-row__card.tone-bad  .stats-row__value { color: var(--accent-red); }
+.stats-row__card--meta {
+  justify-content: center;
+}
 
-/* When the blocked counter increments, the bad card is remounted with a
-   fresh `key`, which restarts this animation from frame 0. */
+/* Per-pillar split card: allowed | blocked side-by-side with a divider. */
+.pillar-card__split {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  gap: 6px;
+}
+
+.pillar-card__half {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+}
+
+.pillar-card__divider {
+  width: 1px;
+  background: var(--border);
+}
+
+.pillar-card__value {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.pillar-card__sub {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.pillar-card__half.tone-good .pillar-card__value { color: var(--accent-green); }
+.pillar-card__half.tone-bad  .pillar-card__value { color: var(--accent-red); }
+
+/* When any blocked counter increments, every pillar card with blocked > 0
+   re-mounts with a fresh `key`, restarting this animation from frame 0. */
 .stats-row__card.is-pulsing {
   animation: pulse-bad 700ms ease-out 1;
 }
 
 @keyframes pulse-bad {
   0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(255, 77, 94, 0.0); }
-  20%  { transform: scale(1.06); box-shadow: 0 0 0 6px rgba(255, 77, 94, 0.20); border-color: var(--accent-red); }
+  20%  { transform: scale(1.04); box-shadow: 0 0 0 6px rgba(255, 77, 94, 0.20); border-color: var(--accent-red); }
   100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(255, 77, 94, 0.0); }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 900px) {
   .stats-row { grid-template-columns: repeat(2, 1fr); }
 }

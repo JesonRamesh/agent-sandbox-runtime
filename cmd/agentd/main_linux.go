@@ -315,6 +315,7 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		"bins", compiled.NBins,
 		"mode", compiled.Mode)
 	d.emitEvent(id, uint32(a.PID), "agent.started", map[string]any{ //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
+		"name":        m.Name,
 		"command":     m.Command,
 		"cgroup_path": cg.Path(),
 		"cgroup_id":   cgID,
@@ -331,10 +332,18 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 // daemon's events.Pipeline. The Event.Kind field already carries the
 // pillar+verb (e.g. "net.connect"); we forward it verbatim and stuff
 // pillar-specific payload into the details object.
+//
+// Each event also carries a userspace-attributed `reason_code` /
+// `reason_message` derived from the agent's manifest. Consumers (the
+// dashboard, the per-agent log file) read these to render *why* a verdict
+// landed without re-implementing the kernel's match. The kernel's verdict
+// is still the source of truth — see internal/policy/attribute.go for the
+// caveats on this approximation.
 func (d *daemon) streamBPFEvents(ctx context.Context, agentID string, bh *bpf.Handle) {
 	for ev := range bh.Events(ctx) {
 		details := map[string]any{
 			"verdict":   ev.Verdict,
+			"pillar":    policy.Pillar(policy.AccessKind(ev.Kind)),
 			"comm":      ev.Comm,
 			"tgid":      ev.TGID,
 			"uid":       ev.UID,
@@ -342,24 +351,48 @@ func (d *daemon) streamBPFEvents(ctx context.Context, agentID string, bh *bpf.Ha
 			"time_ns":   ev.TimeNs,
 			"cgroup_id": ev.CgroupID,
 		}
+		facts := policy.AccessFacts{
+			Kind:    policy.AccessKind(ev.Kind),
+			Verdict: ev.Verdict,
+		}
 		if ev.Net != nil {
 			details["family"] = ev.Net.Family
 			details["dport"] = ev.Net.Dport
 			details["daddr"] = ev.Net.Daddr
+			facts.DstIP = ev.Net.Daddr
+			facts.DstPort = ev.Net.Dport
 		}
 		if ev.File != nil {
 			details["flags"] = ev.File.Flags
 			details["path"] = ev.File.Path
+			facts.Path = ev.File.Path
 		}
 		if ev.Creds != nil {
 			details["old_id"] = ev.Creds.OldID
 			details["new_id"] = ev.Creds.NewID
 			details["cap_effective"] = ev.Creds.CapEff
+			facts.OldID = ev.Creds.OldID
+			facts.NewID = ev.Creds.NewID
+			facts.CapEffective = ev.Creds.CapEff
 		}
 		if ev.Exec != nil {
 			details["ppid"] = ev.Exec.PPID
 			details["filename"] = ev.Exec.Filename
+			facts.Filename = ev.Exec.Filename
 		}
+
+		// Attribute against the agent's manifest. If the agent has been
+		// removed from the registry (race with shutdown / cleanup) we still
+		// emit the event without an explanation rather than dropping it.
+		if a, ok := d.registry.Get(agentID); ok {
+			r := policy.Explain(a.Manifest, facts)
+			details["reason_code"] = r.ReasonCode
+			details["reason_message"] = r.ReasonMessage
+			if r.MatchedRule != "" {
+				details["matched_rule"] = r.MatchedRule
+			}
+		}
+
 		d.emitEvent(agentID, ev.PID, ev.Kind, details)
 	}
 }

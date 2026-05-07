@@ -8,31 +8,45 @@ function formatUptime(seconds) {
   return `${m}m ${r.toString().padStart(2, '0')}s`;
 }
 
+// Render allowed/blocked side-by-side inside one pillar card so an operator
+// can scan four pillars in one row without losing the comparison.
+function PillarStat({ id, label, allowed, blocked, pulseKey }) {
+  const isPulsing = blocked > 0 && pulseKey > 0;
+  const key = isPulsing ? `${id}-${pulseKey}` : id;
+  return (
+    <div key={key} className={`stats-row__card pillar-card${isPulsing ? ' is-pulsing' : ''}`}>
+      <div className="stats-row__label">{label}</div>
+      <div className="pillar-card__split">
+        <div className="pillar-card__half tone-good">
+          <span className="pillar-card__value">{allowed}</span>
+          <span className="pillar-card__sub">allowed</span>
+        </div>
+        <div className="pillar-card__divider" />
+        <div className="pillar-card__half tone-bad">
+          <span className="pillar-card__value">{blocked}</span>
+          <span className="pillar-card__sub">blocked</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function StatsRow({ stats, blockedPulseKey = 0 }) {
-  const { toolCalls = 0, allowed = 0, blocked = 0, uptime = 0 } = stats || {};
-  const cards = [
-    { id: 'tool',    label: 'tool calls',          value: toolCalls,             tone: 'neutral' },
-    { id: 'allowed', label: 'connections allowed', value: allowed,               tone: 'good'    },
-    { id: 'blocked', label: 'connections blocked', value: blocked,               tone: 'bad'     },
-    { id: 'uptime',  label: 'uptime',              value: formatUptime(uptime),  tone: 'neutral' },
-  ];
+  const s = stats || {};
   return (
     <div className="stats-row">
-      {cards.map((c) => {
-        const isPulsing = c.id === 'blocked' && blockedPulseKey > 0;
-        // Remount the bad card when the pulse key changes so the CSS animation
-        // restarts from frame 0 each time the blocked count ticks up.
-        const key = c.id === 'blocked' ? `blocked-${blockedPulseKey}` : c.id;
-        return (
-          <div
-            key={key}
-            className={`stats-row__card tone-${c.tone}${isPulsing ? ' is-pulsing' : ''}`}
-          >
-            <div className="stats-row__value">{c.value}</div>
-            <div className="stats-row__label">{c.label}</div>
-          </div>
-        );
-      })}
+      <PillarStat id="net"  label="network"     allowed={s.netAllowed  || 0} blocked={s.netBlocked  || 0} pulseKey={blockedPulseKey} />
+      <PillarStat id="file" label="filesystem"  allowed={s.fileAllowed || 0} blocked={s.fileBlocked || 0} pulseKey={blockedPulseKey} />
+      <PillarStat id="exec" label="exec"        allowed={s.execAllowed || 0} blocked={s.execBlocked || 0} pulseKey={blockedPulseKey} />
+      <PillarStat id="cred" label="credentials" allowed={s.credAllowed || 0} blocked={s.credBlocked || 0} pulseKey={blockedPulseKey} />
+      <div className="stats-row__card stats-row__card--meta">
+        <div className="stats-row__value">{s.toolCalls || 0}</div>
+        <div className="stats-row__label">tool calls</div>
+      </div>
+      <div className="stats-row__card stats-row__card--meta">
+        <div className="stats-row__value">{formatUptime(s.uptime)}</div>
+        <div className="stats-row__label">uptime</div>
+      </div>
     </div>
   );
 }

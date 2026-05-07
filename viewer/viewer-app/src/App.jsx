@@ -5,34 +5,42 @@ import AgentTabs from './components/AgentTabs.jsx';
 import StatsRow from './components/StatsRow.jsx';
 import LLMPanel from './components/LLMPanel.jsx';
 import KernelPanel from './components/KernelPanel.jsx';
+import EventDetail from './components/EventDetail.jsx';
+import ScenarioRunner from './components/ScenarioRunner.jsx';
 
-const WS_URL = 'ws://localhost:8765';
+const WS_URL = `ws://${location.hostname}:${location.port || '8765'}`;
 const RECONNECT_DELAY_MS = 3000;
 const MAX_EVENTS = 500;
 
 const LLM_TYPES = new Set(['stdout', 'tool_call', 'stopped', 'crashed']);
-const KERNEL_TYPES = new Set(['connect_attempt', 'connect_allowed', 'connect_blocked']);
 
-// Banner reveal is delayed slightly after the kernel row flashes so the eye
-// follows the chain of cause from RIGHT panel → LEFT banner.
+// Pillar × verdict types emitted by the bridge transform. Keep this in
+// lockstep with viewer/server/transform.js (UI_KERNEL_TYPES) — the
+// bridge's unit tests assert the exact set.
+const KERNEL_TYPES = new Set([
+  'net_allowed',  'net_blocked',
+  'file_allowed', 'file_blocked',
+  'exec_allowed', 'exec_blocked',
+  'cred_allowed', 'cred_blocked',
+  // Legacy aliases — accepted so a mock stream that still emits the old
+  // schema doesn't get silently dropped during the migration window.
+  'connect_attempt', 'connect_allowed', 'connect_blocked',
+]);
+
 const BANNER_REVEAL_DELAY_MS = 300;
 const BANNER_AUTO_DISMISS_MS = 5000;
-
-// How far back (in seconds) to look for a tool_call that matches a blocked
-// kernel event. Longer than the mock cadence (~1.5s) so we still match even
-// if the streams drift slightly.
 const MATCH_WINDOW_SEC = 10;
 
-// Walk the LLM history backwards to find the tool_call that best explains
-// this blocked connection. Prefer URL-substring match; fall back to nearest
-// tool_call in the time window.
 function findInjectionTarget(blocked, llmEvents) {
-  const target = blocked.data?.hostname;
+  // Best-effort link from a blocked kernel row to the tool_call that drove
+  // it. Only meaningful when the orchestrator is feeding LLM events; with
+  // just bridge-driven kernel events it will simply return null.
+  const target = blocked.data?.target || blocked.data?.hostname;
   let fallbackId = null;
   for (let i = llmEvents.length - 1; i >= 0; i--) {
     const e = llmEvents[i];
     if (e.agent !== blocked.agent) continue;
-    const dt = Math.abs((blocked.ts - e.ts));
+    const dt = Math.abs(blocked.ts - e.ts);
     if (dt > MATCH_WINDOW_SEC) break;
     if (e.type !== 'tool_call') continue;
     const url = (e.data?.args?.url || '').toString();
@@ -49,7 +57,8 @@ export default function App() {
   const [activeAgent, setActiveAgent] = useState(null);
   const [uptime, setUptime] = useState(0);
 
-  // Cross-panel alert state — owned here so all three children can react.
+  const [selectedEventId, setSelectedEventId] = useState(null);
+
   const [injectionAlert, setInjectionAlert] = useState(null);
   const [injectionTargets, setInjectionTargets] = useState(() => new Set());
   const [blockedPulseKey, setBlockedPulseKey] = useState(0);
@@ -57,16 +66,10 @@ export default function App() {
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const cancelledRef = useRef(false);
-
-  // Monotonic id counter for stable React keys + the injectionTargets Set.
   const eventIdRef = useRef(0);
-
-  // Track which connect_blocked events we've already reacted to so the
-  // matching effect doesn't re-fire on unrelated re-renders.
   const handledBlockedRef = useRef(new Set());
-
-  // Pending banner timers — cleared on unmount + on dismiss.
   const bannerTimersRef = useRef([]);
+
   const clearBannerTimers = () => {
     for (const t of bannerTimersRef.current) clearTimeout(t);
     bannerTimersRef.current = [];
@@ -94,9 +97,7 @@ export default function App() {
           return;
         }
         if (!event || typeof event.type !== 'string') return;
-
         const stamped = { ...event, _id: ++eventIdRef.current };
-
         if (LLM_TYPES.has(stamped.type)) {
           setLlmEvents((prev) => [...prev, stamped].slice(-MAX_EVENTS));
         } else if (KERNEL_TYPES.has(stamped.type)) {
@@ -106,9 +107,7 @@ export default function App() {
         }
       };
 
-      ws.onerror = () => {
-        // onclose will fire next; reconnect is scheduled there.
-      };
+      ws.onerror = () => { /* close handler will reconnect */ };
 
       ws.onclose = () => {
         setWsStatus('disconnected');
@@ -143,19 +142,15 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // React to new connect_blocked events: link to a tool_call, schedule the
-  // banner reveal + auto-dismiss, and bump the stats pulse key.
   useEffect(() => {
     if (kernelEvents.length === 0) return;
     const handled = handledBlockedRef.current;
-    let toAdd = null; // ids to add to injectionTargets after the loop
+    let toAdd = null;
     let lastAlert = null;
-
     for (const ke of kernelEvents) {
-      if (ke.type !== 'connect_blocked') continue;
+      if (!ke.type.endsWith('_blocked')) continue;
       if (handled.has(ke._id)) continue;
       handled.add(ke._id);
-
       const matchedId = findInjectionTarget(ke, llmEvents);
       if (matchedId !== null) {
         if (!toAdd) toAdd = new Set();
@@ -164,13 +159,11 @@ export default function App() {
       lastAlert = {
         kernelId: ke._id,
         toolCallId: matchedId,
-        hostname: ke.data?.hostname || ke.data?.dst_ip || 'unknown',
+        hostname: ke.data?.target || ke.data?.hostname || ke.data?.dst_ip || 'unknown',
         reason: ke.data?.reason || '',
       };
     }
-
     if (!lastAlert) return;
-
     if (toAdd) {
       setInjectionTargets((prev) => {
         const next = new Set(prev);
@@ -178,11 +171,7 @@ export default function App() {
         return next;
       });
     }
-
-    // Stats pulse fires immediately — the counter changes the same tick.
     setBlockedPulseKey((k) => k + 1);
-
-    // Banner reveal is staged 300ms after the kernel row appears.
     clearBannerTimers();
     const reveal = setTimeout(() => setInjectionAlert(lastAlert), BANNER_REVEAL_DELAY_MS);
     const dismiss = setTimeout(
@@ -195,6 +184,25 @@ export default function App() {
   const dismissAlert = () => {
     clearBannerTimers();
     setInjectionAlert(null);
+  };
+
+  // Clear every piece of dashboard state derived from incoming events. The
+  // WebSocket connection itself stays open; uptime keeps counting (it's a
+  // measure of the dashboard session, not the event stream). Future events
+  // start a fresh history.
+  const handleReset = () => {
+    clearBannerTimers();
+    setLlmEvents([]);
+    setKernelEvents([]);
+    setSelectedEventId(null);
+    setActiveAgent(null);
+    setInjectionAlert(null);
+    setInjectionTargets(new Set());
+    setBlockedPulseKey(0);
+    handledBlockedRef.current = new Set();
+    // eventIdRef intentionally NOT reset — keeping it monotonic across
+    // resets means React keys never collide with stale events still in
+    // any component's local state during the same render tick.
   };
 
   const agents = useMemo(() => {
@@ -210,16 +218,34 @@ export default function App() {
     }
   }, [agents, activeAgent]);
 
+  // Per-pillar counters. Walk kernelEvents once and bucket by type.
   const stats = useMemo(() => {
-    let toolCalls = 0;
-    for (const e of llmEvents) if (e.type === 'tool_call') toolCalls += 1;
-    let allowed = 0;
-    let blocked = 0;
+    const s = {
+      toolCalls: 0,
+      uptime,
+      netAllowed: 0,  netBlocked: 0,
+      fileAllowed: 0, fileBlocked: 0,
+      execAllowed: 0, execBlocked: 0,
+      credAllowed: 0, credBlocked: 0,
+    };
+    for (const e of llmEvents) if (e.type === 'tool_call') s.toolCalls += 1;
     for (const e of kernelEvents) {
-      if (e.type === 'connect_allowed') allowed += 1;
-      else if (e.type === 'connect_blocked') blocked += 1;
+      switch (e.type) {
+        case 'net_allowed':  s.netAllowed  += 1; break;
+        case 'net_blocked':  s.netBlocked  += 1; break;
+        case 'file_allowed': s.fileAllowed += 1; break;
+        case 'file_blocked': s.fileBlocked += 1; break;
+        case 'exec_allowed': s.execAllowed += 1; break;
+        case 'exec_blocked': s.execBlocked += 1; break;
+        case 'cred_allowed': s.credAllowed += 1; break;
+        case 'cred_blocked': s.credBlocked += 1; break;
+        // Legacy fall-back so old streams still bump network counters.
+        case 'connect_allowed': s.netAllowed += 1; break;
+        case 'connect_blocked': s.netBlocked += 1; break;
+        default: break;
+      }
     }
-    return { toolCalls, allowed, blocked, uptime };
+    return s;
   }, [llmEvents, kernelEvents, uptime]);
 
   const filteredLlm = activeAgent
@@ -229,9 +255,19 @@ export default function App() {
     ? kernelEvents.filter((e) => e.agent === activeAgent)
     : kernelEvents;
 
+  const selectedEvent = useMemo(
+    () => kernelEvents.find((e) => e._id === selectedEventId) || null,
+    [kernelEvents, selectedEventId],
+  );
+
   return (
     <div className="app">
-      <Header wsStatus={wsStatus} />
+      <Header
+        wsStatus={wsStatus}
+        onReset={handleReset}
+        eventCount={llmEvents.length + kernelEvents.length}
+      />
+      <ScenarioRunner />
       <AgentTabs agents={agents} activeAgent={activeAgent} onSelectAgent={setActiveAgent} />
       <StatsRow stats={stats} blockedPulseKey={blockedPulseKey} />
       <div className="app__panels">
@@ -241,8 +277,17 @@ export default function App() {
           injectionTargets={injectionTargets}
           onDismissAlert={dismissAlert}
         />
-        <KernelPanel events={filteredKernel} />
+        <KernelPanel
+          events={filteredKernel}
+          selectedEventId={selectedEventId}
+          onSelectEvent={setSelectedEventId}
+        />
       </div>
+      {selectedEvent && (
+        <div className="app__detail-overlay">
+          <EventDetail event={selectedEvent} onClose={() => setSelectedEventId(null)} />
+        </div>
+      )}
     </div>
   );
 }

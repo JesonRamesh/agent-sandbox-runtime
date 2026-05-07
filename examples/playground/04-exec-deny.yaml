@@ -1,0 +1,27 @@
+# Scenario 4 — EXEC PILLAR DENY.
+# allowed_bins only includes /bin/sh + /bin/echo. Agent invokes /usr/bin/curl
+# → kernel blocks the exec() before curl ever starts.
+name: scenario-4-exec-deny
+mode: enforce
+command:
+  - /bin/sh
+  - -c
+  - |
+    echo "[scenario-4] running /bin/echo (allowed):"
+    /bin/echo "  -> hello from inside the sandbox"
+    echo "[scenario-4] attempting /usr/bin/curl (NOT on allowed_bins) ..."
+    if /usr/bin/curl -sS http://1.1.1.1 2>&1; then
+      echo "[scenario-4] FAIL: exec was not blocked"
+    else
+      echo "[scenario-4] OK: exec/connect denied (sh exit was non-zero)"
+    fi
+allowed_hosts:
+  - 1.1.1.1:80
+allowed_paths:
+  - /
+allowed_bins:
+  - /bin/sh
+  - /usr/bin/sh
+  - /bin/echo
+  - /usr/bin/echo
+forbidden_caps: []

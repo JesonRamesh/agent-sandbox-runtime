@@ -19,6 +19,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
+const { runScenario, listScenarios, RunnerError } = require('./runner');
+const { loadPermissions } = require('./manifest');
 
 const PORT = Number(process.env.PORT) || 8765;
 // Default loopback-only: the relay forwards privileged kernel events with no
@@ -43,6 +45,24 @@ const WS_MAX_BUFFER  = Number(process.env.WS_MAX_BUFFER) || 8 * 1024 * 1024;
 
 // dist/ lives next to viewer-app/, which lives next to server/.
 const DIST_ROOT = path.resolve(__dirname, '..', 'viewer-app', 'dist');
+
+// Scenario runner config — overridable via env so a different deployment
+// (different repo path, different binary location) doesn't need a code edit.
+// Defaults match the Vagrant VM layout the rest of this repo assumes.
+const SCENARIOS_DIR = process.env.SCENARIOS_DIR ||
+  '/home/vagrant/agentsandbox/examples/playground';
+const AGENTCTL_CMD  = process.env.AGENTCTL_CMD  || 'sudo';
+const AGENTCTL_BASE_ARGS = process.env.AGENTCTL_BASE_ARGS
+  ? process.env.AGENTCTL_BASE_ARGS.split(' ')
+  : ['-n', '/home/vagrant/agentsandbox/bin/agentctl', '--socket=/run/agent-sandbox.sock', 'run', '-f'];
+const SCENARIO_TIMEOUT_MS = Number(process.env.SCENARIO_TIMEOUT_MS) || 60_000;
+// Allow disabling the runner entirely (e.g. in production deployments where
+// the relay should never spawn processes).
+const SCENARIOS_ENABLED = process.env.SCENARIOS_DISABLED !== '1';
+// Cap parallel browser-driven runs so a held-down button can't fork-bomb
+// the host. If a request comes in while we're at the cap, return 429.
+const SCENARIO_MAX_INFLIGHT = Number(process.env.SCENARIO_MAX_INFLIGHT) || 4;
+let scenarioInflight = 0;
 
 const senders = new Set();
 const viewers = new Set();
@@ -165,6 +185,133 @@ function sendPlain(res, status, body) {
   res.end(body);
 }
 
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
+}
+
+// Read up to maxBytes of request body, parse as JSON. Resolves to the
+// parsed object or rejects with an Error tagged with .httpStatus so the
+// caller can pick the right HTTP code.
+function readJsonBody(req, maxBytes = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        const err = new Error('request body too large');
+        err.httpStatus = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8') || '{}';
+      try {
+        resolve(JSON.parse(text));
+      } catch (err) {
+        const wrapped = new Error(`invalid JSON: ${err.message}`);
+        wrapped.httpStatus = 400;
+        reject(wrapped);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+// /api/scenarios/* endpoints. Returns true if the request was handled.
+async function handleApiRequest(req, res, urlPath) {
+  // GET /api/scenarios — list available scenario stems, each with a parsed
+  // permissions summary the UI renders without an extra round-trip.
+  if (req.method === 'GET' && urlPath === '/api/scenarios') {
+    if (!SCENARIOS_ENABLED) {
+      sendJson(res, 200, { enabled: false, scenarios: [] });
+      return true;
+    }
+    try {
+      const stems = await listScenarios({ manifestsDir: SCENARIOS_DIR });
+      // Load each scenario's permissions in parallel. A bad manifest does
+      // not block the rest — we tag it with parse_error so the UI can show
+      // a "view source" link instead of the permissions card.
+      const scenarios = await Promise.all(stems.map(async (name) => {
+        const r = await loadPermissions(name, SCENARIOS_DIR);
+        if (r.ok) return { name, permissions: r.summary };
+        return { name, permissions: null, parse_error: r.error };
+      }));
+      sendJson(res, 200, { enabled: true, scenarios, dir: SCENARIOS_DIR });
+    } catch (err) {
+      warn(`/api/scenarios: ${err.message}`);
+      sendJson(res, 500, { error: 'list_failed', message: err.message });
+    }
+    return true;
+  }
+
+  // POST /api/scenarios/run — spawn agentctl for a named scenario.
+  if (req.method === 'POST' && urlPath === '/api/scenarios/run') {
+    if (!SCENARIOS_ENABLED) {
+      sendJson(res, 503, { error: 'scenarios_disabled' });
+      return true;
+    }
+    if (scenarioInflight >= SCENARIO_MAX_INFLIGHT) {
+      sendJson(res, 429, {
+        error: 'too_many_inflight',
+        message: `at most ${SCENARIO_MAX_INFLIGHT} concurrent runs`,
+      });
+      return true;
+    }
+    let body;
+    try {
+      body = await readJsonBody(req);
+    } catch (err) {
+      sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message });
+      return true;
+    }
+    const name = body && body.name;
+    scenarioInflight += 1;
+    log(`scenario run requested: name=${JSON.stringify(name)} inflight=${scenarioInflight}`);
+    try {
+      const result = await runScenario(name, {
+        manifestsDir: SCENARIOS_DIR,
+        command: AGENTCTL_CMD,
+        baseArgs: AGENTCTL_BASE_ARGS,
+        timeoutMs: SCENARIO_TIMEOUT_MS,
+      });
+      sendJson(res, 200, {
+        ok: result.ok,
+        exit_code: result.exitCode,
+        signal: result.signal,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        scenario: name,
+      });
+    } catch (err) {
+      if (err instanceof RunnerError) {
+        const status = err.code === 'invalid_name' ? 400
+          : err.code === 'not_found' ? 404
+          : err.code === 'timeout' ? 504
+          : 500;
+        sendJson(res, status, { error: err.code, message: err.message });
+      } else {
+        warn(`scenario run failed: ${err.stack || err.message}`);
+        sendJson(res, 500, { error: 'internal', message: err.message });
+      }
+    } finally {
+      scenarioInflight -= 1;
+    }
+    return true;
+  }
+
+  return false;
+}
+
 function sendStaticFile(req, res, filePath) {
   fs.stat(filePath, (statErr, stats) => {
     if (statErr || !stats.isFile()) {
@@ -188,6 +335,30 @@ function sendStaticFile(req, res, filePath) {
 }
 
 function handleHttpRequest(req, res) {
+  // Strip query string + decode the URL-encoded path; defer the default-to-
+  // index.html bit until after the API dispatcher had a look, so /api/* is
+  // never confused with a static asset.
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  } catch {
+    sendPlain(res, 400, 'bad request\n');
+    return;
+  }
+
+  // /api/* — JSON endpoints. handleApiRequest answers itself and returns
+  // true; if it returns false, fall through to the static path below (e.g.
+  // a method-not-allowed for an unknown verb).
+  if (urlPath.startsWith('/api/')) {
+    handleApiRequest(req, res, urlPath).then((handled) => {
+      if (!handled) sendJson(res, 404, { error: 'not_found', path: urlPath });
+    }).catch((err) => {
+      warn(`API handler crashed: ${err.stack || err.message}`);
+      try { sendJson(res, 500, { error: 'internal', message: err.message }); } catch (_) {}
+    });
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendPlain(res, 405, 'method not allowed\n');
     return;
@@ -205,14 +376,6 @@ function handleHttpRequest(req, res) {
     return;
   }
 
-  // Strip query string + decode the URL-encoded path; default `/` to index.html.
-  let urlPath;
-  try {
-    urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
-  } catch {
-    sendPlain(res, 400, 'bad request\n');
-    return;
-  }
   if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
 
   // Resolve and confirm the result is inside DIST_ROOT — refuse traversal.
