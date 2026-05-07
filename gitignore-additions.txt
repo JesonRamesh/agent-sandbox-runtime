@@ -1,0 +1,24 @@
+# === P5 VIEWER — add these to your repo's .gitignore ===
+
+# Context file — never commit this, it contains personal notes and API key reminders
+context.md
+
+# Node.js dependencies — these are installed locally, not committed
+viewer/server/node_modules/
+viewer/viewer-app/node_modules/
+
+# React build output — generated files, not source
+viewer/viewer-app/dist/
+
+# Environment files — may contain API keys
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/settings.json
+.idea/
