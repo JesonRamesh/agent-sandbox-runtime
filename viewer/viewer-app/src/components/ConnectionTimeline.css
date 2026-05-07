@@ -1,0 +1,103 @@
+/* ── Connection Timeline ─────────────────────────────────────────────────── */
+
+.conn-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+.conn-timeline__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.conn-timeline__title {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+.conn-timeline__legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.conn-timeline__leg {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-muted);
+}
+
+.conn-timeline__leg--allowed { color: var(--accent-emerald); }
+.conn-timeline__leg--blocked  { color: var(--accent-crimson); }
+.conn-timeline__leg--time     { color: var(--text-muted); }
+
+.conn-timeline__body {
+  position: relative;
+}
+
+.conn-timeline__svg {
+  width: 100%;
+  height: 68px;
+  display: block;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.01);
+  border: 0.5px solid rgba(255,255,255,0.04);
+}
+
+/* Tooltip */
+.conn-timeline__tooltip {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: rgba(11,15,26,0.92);
+  border: 0.5px solid var(--border-active);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.conn-timeline__tooltip-type {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.conn-timeline__tooltip-type--allowed { color: var(--accent-emerald); }
+.conn-timeline__tooltip-type--blocked  { color: var(--accent-crimson); }
+
+.conn-timeline__tooltip-host {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.conn-timeline__tooltip-age {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}

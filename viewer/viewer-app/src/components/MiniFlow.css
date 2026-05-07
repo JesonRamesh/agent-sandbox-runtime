@@ -1,0 +1,196 @@
+/* ── Mini Flow — horizontal session breadcrumb ───────────────────────────── */
+
+.mini-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px 10px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-top: 1px solid rgba(255,255,255,0.18);
+  border-radius: 12px;
+  height: 120px;
+  flex-shrink: 0;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.mini-flow--empty {
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+}
+
+.mini-flow__empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.mini-flow__label {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+
+/* Horizontal scrollable track */
+.mini-flow__track {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-active) transparent;
+  padding: 0 4px 4px;
+}
+
+.mini-flow__track::-webkit-scrollbar { display: none; }
+
+/* Each step = node + optional connector */
+.mf-step {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Node ─────────────────────────────────────────────────────────────────── */
+
+.mf-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--node-color, var(--border-subtle));
+  min-width: 64px;
+  transition: background 150ms ease, box-shadow 150ms ease;
+  cursor: default;
+}
+
+.mf-node:hover {
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 0 8px var(--node-color, transparent);
+}
+
+.mf-node--circle {
+  border-radius: 50%;
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
+  padding: 6px;
+}
+
+.mf-node--ellipsis {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+/* Active node — current step, pulses */
+.mf-node--active {
+  background: rgba(59, 130, 246, 0.08);
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.25);
+  animation: mf-active-pulse 2s ease-in-out infinite;
+}
+
+/* Blocked node */
+.mf-node--blocked {
+  background: rgba(239, 68, 68, 0.10);
+  border-color: var(--accent-crimson) !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.25);
+  animation: mf-blocked-pulse 1.5s ease-in-out infinite;
+}
+
+/* Live tail node */
+.mf-node--pulse {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: var(--accent-blue);
+  border-style: dashed;
+  animation: mf-active-pulse 1.5s ease-in-out infinite;
+}
+
+.mf-node__icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.mf-node__label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--node-color, var(--text-secondary));
+  white-space: nowrap;
+}
+
+/* ── Connector ────────────────────────────────────────────────────────────── */
+
+.mf-connector {
+  display: flex;
+  align-items: center;
+  width: 36px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.mf-connector__line {
+  flex: 1;
+  height: 1.5px;
+  background: var(--border-active);
+}
+
+.mf-connector__arrow {
+  font-size: 18px;
+  color: var(--border-active);
+  line-height: 1;
+  margin-left: -3px;
+}
+
+/* Animated connector — flows right */
+.mf-connector--animated .mf-connector__line {
+  background: linear-gradient(90deg, var(--border-active) 0%, var(--accent-blue) 50%, var(--border-active) 100%);
+  background-size: 200% 100%;
+  animation: mf-flow 1.5s linear infinite;
+}
+
+.mf-connector--animated .mf-connector__arrow {
+  color: var(--accent-blue);
+}
+
+/* Danger connector — red flow */
+.mf-connector--danger .mf-connector__line {
+  background: linear-gradient(90deg, var(--border-active) 0%, var(--accent-crimson) 50%, var(--border-active) 100%);
+  background-size: 200% 100%;
+  animation: mf-flow 1s linear infinite;
+}
+
+.mf-connector--danger .mf-connector__arrow {
+  color: var(--accent-crimson);
+}
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+
+@keyframes mf-active-pulse {
+  0%, 100% { box-shadow: 0 0 8px  rgba(59, 130, 246, 0.2); }
+  50%       { box-shadow: 0 0 16px rgba(59, 130, 246, 0.4); }
+}
+
+@keyframes mf-blocked-pulse {
+  0%, 100% { box-shadow: 0 0 8px  rgba(239, 68, 68, 0.2); }
+  50%       { box-shadow: 0 0 16px rgba(239, 68, 68, 0.45); }
+}
+
+@keyframes mf-flow {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}

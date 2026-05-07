@@ -1,16 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import Header from './components/Header.jsx';
-import AgentTabs from './components/AgentTabs.jsx';
-import StatsRow from './components/StatsRow.jsx';
+import Sidebar from './components/Sidebar.jsx';
+import StatRings from './components/StatRings.jsx';
 import LLMPanel from './components/LLMPanel.jsx';
 import KernelPanel from './components/KernelPanel.jsx';
+import ThreatGauge from './components/ThreatGauge.jsx';
+import MiniFlow from './components/MiniFlow.jsx';
+import ConnectionTimeline from './components/ConnectionTimeline.jsx';
+import WorkflowGraph from './components/WorkflowGraph.jsx';
+import './components/WorkflowGraph.css';
 
 const WS_URL = 'ws://localhost:8765';
 const RECONNECT_DELAY_MS = 3000;
 const MAX_EVENTS = 500;
 
-const LLM_TYPES = new Set(['stdout', 'tool_call', 'stopped', 'crashed']);
+const LLM_TYPES = new Set([
+  'stdout', 'tool_call', 'stopped', 'crashed',
+  'session_start', 'user_input', 'tool_result', 'agent_output',
+]);
 const KERNEL_TYPES = new Set(['connect_attempt', 'connect_allowed', 'connect_blocked']);
 
 // Banner reveal is delayed slightly after the kernel row flashes so the eye
@@ -53,6 +61,9 @@ export default function App() {
   const [injectionAlert, setInjectionAlert] = useState(null);
   const [injectionTargets, setInjectionTargets] = useState(() => new Set());
   const [blockedPulseKey, setBlockedPulseKey] = useState(0);
+  const [latestAnalysis, setLatestAnalysis] = useState(null);
+  const [lastAnalysisTs, setLastAnalysisTs] = useState(null);
+  const [activeTab, setActiveTab] = useState('events');
 
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -101,6 +112,9 @@ export default function App() {
           setLlmEvents((prev) => [...prev, stamped].slice(-MAX_EVENTS));
         } else if (KERNEL_TYPES.has(stamped.type)) {
           setKernelEvents((prev) => [...prev, stamped].slice(-MAX_EVENTS));
+        } else if (stamped.type === 'security_analysis') {
+          setLatestAnalysis(stamped.data);
+          setLastAnalysisTs(stamped.ts);
         } else {
           console.warn('viewer: unknown event type', stamped.type);
         }
@@ -231,17 +245,59 @@ export default function App() {
 
   return (
     <div className="app">
-      <Header wsStatus={wsStatus} />
-      <AgentTabs agents={agents} activeAgent={activeAgent} onSelectAgent={setActiveAgent} />
-      <StatsRow stats={stats} blockedPulseKey={blockedPulseKey} />
-      <div className="app__panels">
-        <LLMPanel
-          events={filteredLlm}
-          alert={injectionAlert}
-          injectionTargets={injectionTargets}
-          onDismissAlert={dismissAlert}
+      {/* Top header bar — full width */}
+      <Header wsStatus={wsStatus} llmEvents={llmEvents} kernelEvents={kernelEvents} />
+
+      {/* Main body: sidebar + content */}
+      <div className="app__body">
+        <Sidebar
+          agents={agents}
+          activeAgent={activeAgent}
+          onSelectAgent={setActiveAgent}
+          llmEvents={llmEvents}
+          kernelEvents={kernelEvents}
+          stats={stats}
+          wsStatus={wsStatus}
+          activeTab={activeTab}
+          onSelectTab={setActiveTab}
         />
-        <KernelPanel events={filteredKernel} />
+
+        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}`}>
+          {/* Animated ring stats — hidden on workflow tab */}
+          {activeTab === 'events' && <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />}
+
+          {/* Event panels or workflow graph */}
+          {activeTab === 'events' ? (
+            <>
+            <MiniFlow
+              llmEvents={filteredLlm}
+              kernelEvents={filteredKernel}
+              injectionTargets={injectionTargets}
+            />
+            <div className="app__panels">
+              <LLMPanel
+                events={filteredLlm}
+                alert={injectionAlert}
+                injectionTargets={injectionTargets}
+                onDismissAlert={dismissAlert}
+              />
+              <KernelPanel events={filteredKernel} />
+            </div>
+            </>  
+          ) : (
+            <div className="app__workflow">
+              <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
+            </div>
+          )}
+
+          {/* Connection timeline + threat gauge — events tab only */}
+          {activeTab === 'events' && (
+            <>
+              <ConnectionTimeline kernelEvents={filteredKernel} />
+              <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
