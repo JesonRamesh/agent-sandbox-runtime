@@ -38,8 +38,9 @@ export default function Sidebar({
   const connected = wsStatus === 'connected';
 
   const navItems = [
-    { id: 'events',   icon: '⬡', label: 'Events' },
-    { id: 'workflow', icon: '◈', label: 'Workflow' },
+    { id: 'events',   icon: '⬡', label: 'Events'   },
+    { id: 'workflow', icon: '◈', label: 'Workflow'  },
+    { id: 'policies', icon: '▦', label: 'Policies'  },
   ];
 
   return (

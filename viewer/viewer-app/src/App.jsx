@@ -10,6 +10,7 @@ import MiniFlow from './components/MiniFlow.jsx';
 import ConnectionTimeline from './components/ConnectionTimeline.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
+import PolicyView from './components/PolicyView.jsx';
 
 const WS_URL = 'ws://localhost:8765';
 const RECONNECT_DELAY_MS = 3000;
@@ -63,6 +64,7 @@ export default function App() {
   const [blockedPulseKey, setBlockedPulseKey] = useState(0);
   const [latestAnalysis, setLatestAnalysis] = useState(null);
   const [lastAnalysisTs, setLastAnalysisTs] = useState(null);
+  // 'events' | 'workflow' | 'policies'
   const [activeTab, setActiveTab] = useState('events');
 
   const socketRef = useRef(null);
@@ -262,40 +264,44 @@ export default function App() {
           onSelectTab={setActiveTab}
         />
 
-        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}`}>
-          {/* Animated ring stats — hidden on workflow tab */}
+        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}${activeTab === 'policies' ? ' app__main--policies' : ''}`}>
+          {/* Animated ring stats — events tab only */}
           {activeTab === 'events' && <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />}
 
-          {/* Event panels or workflow graph */}
-          {activeTab === 'events' ? (
+          {/* ── Events tab ──────────────────────────────────────────── */}
+          {activeTab === 'events' && (
             <>
-            <MiniFlow
-              llmEvents={filteredLlm}
-              kernelEvents={filteredKernel}
-              injectionTargets={injectionTargets}
-            />
-            <div className="app__panels">
-              <LLMPanel
-                events={filteredLlm}
-                alert={injectionAlert}
+              <MiniFlow
+                llmEvents={filteredLlm}
+                kernelEvents={filteredKernel}
                 injectionTargets={injectionTargets}
-                onDismissAlert={dismissAlert}
               />
-              <KernelPanel events={filteredKernel} />
-            </div>
-            </>  
-          ) : (
+              <div className="app__panels">
+                <LLMPanel
+                  events={filteredLlm}
+                  alert={injectionAlert}
+                  injectionTargets={injectionTargets}
+                  onDismissAlert={dismissAlert}
+                />
+                <KernelPanel events={filteredKernel} />
+              </div>
+              <ConnectionTimeline kernelEvents={filteredKernel} />
+              <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
+            </>
+          )}
+
+          {/* ── Workflow tab ─────────────────────────────────────────── */}
+          {activeTab === 'workflow' && (
             <div className="app__workflow">
               <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
             </div>
           )}
 
-          {/* Connection timeline + threat gauge — events tab only */}
-          {activeTab === 'events' && (
-            <>
-              <ConnectionTimeline kernelEvents={filteredKernel} />
-              <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
-            </>
+          {/* ── Policies tab ─────────────────────────────────────────── */}
+          {activeTab === 'policies' && (
+            <div className="app__policies">
+              <PolicyView />
+            </div>
           )}
         </div>
       </div>

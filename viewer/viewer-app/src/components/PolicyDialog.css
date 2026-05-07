@@ -1,0 +1,208 @@
+/* ── PolicyDialog ────────────────────────────────────────────────────────── */
+
+.pd {
+  /* Reset browser defaults */
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: min(580px, 92vw);
+  max-height: 90vh;
+  overflow: visible;
+  border-radius: 12px;
+}
+
+/* Backdrop */
+.pd::backdrop {
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Inner form card */
+.pd form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.13);
+  border-top: 1px solid rgba(255,255,255,0.22);
+  border-radius: 12px;
+  padding: 20px 22px 18px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.09);
+  overflow-y: auto;
+  max-height: 90vh;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.pd__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.pd__title {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.pd__close {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pd__close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--accent-crimson);
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────────── */
+
+.pd__error {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-crimson);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* ── Row (side-by-side labels) ───────────────────────────────────────────── */
+
+.pd__row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pd__label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pd__label--grow {
+  flex: 1;
+}
+
+.pd__hint {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: -3px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+
+.pd__input,
+.pd__select,
+.pd__textarea {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 10px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  width: 100%;
+  resize: vertical;
+}
+
+.pd__input:focus,
+.pd__select:focus,
+.pd__textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.pd__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pd__select option {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+.pd__textarea {
+  line-height: 1.6;
+  min-height: 60px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+
+.pd__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pd__btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.pd__btn--cancel {
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+}
+
+.pd__btn--cancel:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.pd__btn--save {
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.pd__btn--save:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.pd__btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
