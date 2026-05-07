@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createBinding, createPolicy, fetchPolicies, updatePolicy } from '../api/daemonApi.js';
+import { MOCK_POLICIES } from '../api/mockPolicies.js';
 import BindingsForm from './BindingsForm.jsx';
 import PolicyCard from './PolicyCard.jsx';
 import PolicyDialog from './PolicyDialog.jsx';
@@ -9,6 +10,7 @@ export default function PolicyView() {
   const [policies, setPolicies]         = useState([]);
   const [loading, setLoading]           = useState(true);
   const [fetchError, setFetchError]     = useState(null);
+  const [usingMock, setUsingMock]       = useState(false);
   const [editingPolicy, setEditingPolicy] = useState(null);  // null = closed
   const [showDialog, setShowDialog]     = useState(false);
   const [search, setSearch]             = useState('');
@@ -17,12 +19,15 @@ export default function PolicyView() {
   const load = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
+    setUsingMock(false);
     try {
       const data = await fetchPolicies();
-      // Sort by id for stable ordering
       setPolicies((data || []).sort((a, b) => a.id - b.id));
     } catch (err) {
+      // Daemon unreachable — fall back to mock data so the UI is always demo-able
       setFetchError(err.message);
+      setPolicies(MOCK_POLICIES);
+      setUsingMock(true);
     } finally {
       setLoading(false);
     }
@@ -47,6 +52,14 @@ export default function PolicyView() {
   }
 
   async function handleSave(payload, isNew) {
+    if (usingMock) {
+      // Daemon offline — apply edits locally to mock data so demo still works
+      setPolicies((prev) => {
+        const without = prev.filter((p) => p.id !== payload.id);
+        return [...without, payload].sort((a, b) => a.id - b.id);
+      });
+      return;
+    }
     if (isNew) {
       await createPolicy(payload);
     } else {
@@ -101,13 +114,18 @@ export default function PolicyView() {
         </div>
       </div>
 
-      {/* ── Error state ──────────────────────────────────────────────── */}
+      {/* ── Error / mock-mode banner ──────────────────────────────────── */}
       {fetchError && (
-        <div className="policy-view__error">
-          <span className="policy-view__error-icon">⚠</span>
+        <div className={`policy-view__error ${usingMock ? 'policy-view__error--mock' : ''}`}>
+          <span className="policy-view__error-icon">{usingMock ? '⚡' : '⚠'}</span>
           <span>
-            Could not reach daemon — <code>{fetchError}</code>. Make sure{' '}
-            <code>agentd</code> is running on port 9000.
+            {usingMock ? (
+              <>Daemon offline — showing <strong>mock data</strong>. Edits are local only.{' '}
+              Start <code>agentd</code> on port 9000 and retry to go live.</>
+            ) : (
+              <>Could not reach daemon — <code>{fetchError}</code>. Make sure{' '}
+              <code>agentd</code> is running on port 9000.</>
+            )}
           </span>
           <button className="policy-view__retry" onClick={load}>Retry</button>
         </div>

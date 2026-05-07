@@ -131,6 +131,28 @@
   border-radius: 3px;
 }
 
+/* Mock-mode variant — amber instead of red */
+.policy-view__error--mock {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.22);
+  color: var(--accent-amber);
+}
+
+.policy-view__error--mock code {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+}
+
+.policy-view__error--mock .policy-view__retry {
+  color: var(--accent-amber);
+  border-color: rgba(245, 158, 11, 0.30);
+  background: rgba(245, 158, 11, 0.10);
+}
+
+.policy-view__error--mock .policy-view__retry:hover {
+  background: rgba(245, 158, 11, 0.20);
+}
+
 .policy-view__error-icon {
   font-size: 14px;
   flex-shrink: 0;
