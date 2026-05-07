@@ -1,0 +1,86 @@
+/* ── DaemonHealth pill ───────────────────────────────────────────────────── */
+
+.daemon-health {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  transition: background 300ms ease, border-color 300ms ease, color 300ms ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Dot ─────────────────────────────────────────────────────────────────── */
+
+.daemon-health__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: background 300ms ease;
+}
+
+/* ── Checking state ──────────────────────────────────────────────────────── */
+
+.daemon-health--checking {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--border-subtle);
+  color: var(--text-muted);
+}
+
+.daemon-health--checking .daemon-health__dot {
+  background: var(--text-muted);
+  animation: health-pulse-neutral 1.4s ease-in-out infinite;
+}
+
+/* ── Live state ──────────────────────────────────────────────────────────── */
+
+.daemon-health--live {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: var(--accent-emerald);
+}
+
+.daemon-health--live .daemon-health__dot {
+  background: var(--accent-emerald);
+  animation: health-pulse-green 2s ease-in-out infinite;
+}
+
+/* ── Offline state ───────────────────────────────────────────────────────── */
+
+.daemon-health--offline {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: var(--accent-crimson);
+}
+
+.daemon-health--offline .daemon-health__dot {
+  background: var(--accent-crimson);
+  animation: health-pulse-red 2s ease-in-out infinite;
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+
+@keyframes health-pulse-green {
+  0%   { box-shadow: 0 0 0 0   rgba(16, 185, 129, 0.6); }
+  70%  { box-shadow: 0 0 0 5px rgba(16, 185, 129, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(16, 185, 129, 0); }
+}
+
+@keyframes health-pulse-red {
+  0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.6); }
+  70%  { box-shadow: 0 0 0 5px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0); }
+}
+
+@keyframes health-pulse-neutral {
+  0%,100% { opacity: 1; }
+  50%     { opacity: 0.35; }
+}

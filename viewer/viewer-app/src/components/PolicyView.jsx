@@ -4,6 +4,7 @@ import { MOCK_POLICIES } from '../api/mockPolicies.js';
 import BindingsForm from './BindingsForm.jsx';
 import PolicyCard from './PolicyCard.jsx';
 import PolicyDialog from './PolicyDialog.jsx';
+import DaemonHealth from './DaemonHealth.jsx';
 import './PolicyView.css';
 
 export default function PolicyView() {
@@ -98,6 +99,7 @@ export default function PolicyView() {
           )}
         </div>
         <div className="policy-view__toolbar-right">
+          <DaemonHealth />
           <input
             className="policy-view__search"
             type="text"
