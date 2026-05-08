@@ -396,7 +396,11 @@ function buildKernelGraph(llmEvents, kernelEvents) {
           type: 'smoothstep', style: { stroke: '#2a3550', strokeWidth: 2 },
         });
       }
+      y += 150; // circle node height
     }
+
+    // Advance global Y so the next session starts below this one
+    globalY = y + SESSION_GAP;
   });
 
   return { nodes, edges };
