@@ -56,6 +56,41 @@
   100% { background-position: 0% 50%; }
 }
 
+/* ── Left-to-right ambient sweep glow ────────────────────────────────────── */
+
+@keyframes glow-sweep {
+  0%   { transform: rotate(+25deg) translateX(-120vw); }
+  100% { transform: rotate(+25deg) translateX(120vw); }
+}
+
+body::after,
+body::before {
+  content: '';
+  position: fixed;
+  top: -100vh;       /* start fully above viewport so beam enters from top-left */
+  left: 0;
+  width: 100vw;
+  height: 300vh;     /* tall enough that after rotation no gaps at corners */
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(
+    90deg,
+    transparent                    0%,
+    rgba(59, 130, 246, 0.028)     20%,
+    rgba(139, 92, 246, 0.08)      50%,
+    rgba(59, 130, 246, 0.028)     80%,
+    transparent                    100%
+  );
+  animation: glow-sweep 9s linear infinite;
+  will-change: transform;
+}
+
+/* Second beam offset by half the duration — fills the gap so the sweep
+   appears continuous with no abrupt restart at the left edge */
+body::before {
+  animation-delay: -4.5s;
+}
+
 html, body, #root {
   margin: 0;
   padding: 0;
