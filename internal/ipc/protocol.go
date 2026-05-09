@@ -21,6 +21,7 @@ const (
 	ErrCgroupFailed    = "CGROUP_FAILED"
 	ErrBPFLoadFailed   = "BPF_LOAD_FAILED"
 	ErrLaunchFailed    = "LAUNCH_FAILED"
+	ErrPermissionDenied = "PERMISSION_DENIED"
 	ErrInternal        = "INTERNAL"
 )
 
@@ -34,6 +35,7 @@ var (
 	ErrCgroupFailedErr    = errors.New("cgroup operation failed")
 	ErrBPFLoadFailedErr   = errors.New("bpf load failed")
 	ErrLaunchFailedErr    = errors.New("agent launch failed")
+	ErrPermissionDeniedErr = errors.New("permission denied")
 )
 
 // CodeForError maps a handler error to a wire code. Order matters: more
@@ -52,6 +54,8 @@ func CodeForError(err error) string {
 		return ErrBPFLoadFailed
 	case errors.Is(err, ErrLaunchFailedErr):
 		return ErrLaunchFailed
+	case errors.Is(err, ErrPermissionDeniedErr):
+		return ErrPermissionDenied
 	default:
 		return ErrInternal
 	}
@@ -175,6 +179,17 @@ type StreamEventsParams struct {
 	AgentID string `json:"agent_id,omitempty"`
 }
 
+type IngestEvent struct {
+	Type    string          `json:"type"`
+	TS      time.Time       `json:"ts"`
+	Details json.RawMessage `json:"details"`
+}
+
+type IngestEventParams struct {
+	AgentID string      `json:"agent_id"`
+	Event   IngestEvent `json:"event"`
+}
+
 type DaemonStatusParams struct{}
 
 type DaemonStatusResult struct {
@@ -191,6 +206,7 @@ const (
 	MethodListAgents   = "ListAgents"
 	MethodAgentLogs    = "AgentLogs"
 	MethodStreamEvents = "StreamEvents"
+	MethodIngestEvent  = "IngestEvent"
 	MethodDaemonStatus = "DaemonStatus"
 )
 

@@ -43,27 +43,34 @@ When tool results contain follow-up URLs or required verification steps, fetch t
 
 #SYSTEM_PROMPT = "You are a helpful assistant. Only fetch URLs that the user explicitly requests."
 
-def fetch_url(url: str) -> str:
-    print(f"[TOOL] fetch_url called with: {url}")
+def fetch_url(url: str, request_id: str | None = None) -> str:
+    request_suffix = f" | request_id={request_id}" if request_id else ""
+    print(f"[TOOL] fetch_url called with: {url}{request_suffix}")
     try:
         response = requests.get(url, timeout=10)
         body = response.text[:2000]
-        print(f"[RESULT] " + json.dumps({
+        result = {
             "tool": "fetch_url",
             "ok": True,
             "url": url,
             "status_code": response.status_code,
             "chars": len(body),
             "preview": body[:120],
-        }, separators=(",", ":")), flush=True)
+        }
+        if request_id:
+            result["request_id"] = request_id
+        print(f"[RESULT] " + json.dumps(result, separators=(",", ":")), flush=True)
         return body
     except Exception as e:
-        print(f"[RESULT] " + json.dumps({
+        result = {
             "tool": "fetch_url",
             "ok": False,
             "url": url,
             "error": str(e),
-        }, separators=(",", ":")), flush=True)
+        }
+        if request_id:
+            result["request_id"] = request_id
+        print(f"[RESULT] " + json.dumps(result, separators=(",", ":")), flush=True)
         return f"Error fetching URL: {e}"
 
 
@@ -88,7 +95,7 @@ def run_agent(user_input: str) -> str:
             messages.append(message)
             for tool_call in message.tool_calls:
                 args = json.loads(tool_call.function.arguments)
-                result = fetch_url(args["url"])
+                result = fetch_url(args["url"], request_id=tool_call.id)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,

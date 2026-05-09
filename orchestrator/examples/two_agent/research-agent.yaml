@@ -1,0 +1,13 @@
+name: research-agent
+command: ["/usr/bin/python3", "/opt/agents/research_agent.py"]
+allowed_hosts:
+  - api.openai.com:443
+allowed_paths:
+  - /opt/agents/
+  - /tmp/agent-handoff/
+working_dir: /opt/agents
+env:
+  PYTHONUNBUFFERED: "1"
+user: "65534"
+timeout: "5m"
+description: "Networked research agent that writes a handoff file for the writer."

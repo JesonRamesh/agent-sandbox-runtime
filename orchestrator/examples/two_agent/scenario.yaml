@@ -1,0 +1,10 @@
+name: research-writer-pipeline
+description: Research agent runs first, writer agent runs only after successful completion.
+stagger_seconds: 0.5
+agents:
+  - id: research
+    manifest: ./research-agent.yaml
+  - id: writer
+    manifest: ./writer-agent.yaml
+    depends_on: [research]
+    launch_when: success

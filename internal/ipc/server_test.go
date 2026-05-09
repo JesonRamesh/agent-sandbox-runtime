@@ -21,6 +21,7 @@ type mockHandler struct {
 	listAgents   func(ctx context.Context) ([]AgentSummary, error)
 	agentLogs    func(ctx context.Context, id string, tailN int) ([]Event, error)
 	streamEvents func(ctx context.Context, id string, sink func(Event) error) error
+	ingestEvent  func(ctx context.Context, id string, event IngestEvent) error
 	daemonStatus func(ctx context.Context) (DaemonStatusResult, error)
 }
 
@@ -51,6 +52,12 @@ func (h *mockHandler) AgentLogs(ctx context.Context, id string, tailN int) ([]Ev
 func (h *mockHandler) StreamEvents(ctx context.Context, id string, sink func(Event) error) error {
 	if h.streamEvents != nil {
 		return h.streamEvents(ctx, id, sink)
+	}
+	return nil
+}
+func (h *mockHandler) IngestEvent(ctx context.Context, id string, event IngestEvent) error {
+	if h.ingestEvent != nil {
+		return h.ingestEvent(ctx, id, event)
 	}
 	return nil
 }
@@ -311,6 +318,87 @@ func TestStopAgentSuccess(t *testing.T) {
 	}
 	if !called {
 		t.Fatal("handler not invoked")
+	}
+}
+
+func TestIngestEventRoundTrip(t *testing.T) {
+	var (
+		gotAgentID string
+		gotEvent   IngestEvent
+	)
+	h := &mockHandler{
+		ingestEvent: func(_ context.Context, id string, event IngestEvent) error {
+			gotAgentID = id
+			gotEvent = event
+			return nil
+		},
+	}
+	sock, stop := startServer(t, h)
+	defer stop()
+	c := dial(t, sock)
+	defer c.Close()
+
+	details := json.RawMessage(`{"line":"hello"}`)
+	params, _ := json.Marshal(IngestEventParams{
+		AgentID: "agt_xyz",
+		Event: IngestEvent{
+			Type:    "llm.stdout",
+			TS:      time.Now().UTC(),
+			Details: details,
+		},
+	})
+	if err := WriteFrame(c, Request{Method: MethodIngestEvent, Params: params}); err != nil {
+		t.Fatalf("WriteFrame: %v", err)
+	}
+	var resp Response
+	if err := ReadFrame(c, &resp); err != nil {
+		t.Fatalf("ReadFrame: %v", err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected ok, got %+v", resp.Error)
+	}
+	if gotAgentID != "agt_xyz" {
+		t.Fatalf("wrong agent id: %s", gotAgentID)
+	}
+	if gotEvent.Type != "llm.stdout" {
+		t.Fatalf("wrong event type: %s", gotEvent.Type)
+	}
+	if string(gotEvent.Details) != string(details) {
+		t.Fatalf("wrong event details: %s", string(gotEvent.Details))
+	}
+}
+
+func TestIngestEventErrorMapping(t *testing.T) {
+	h := &mockHandler{
+		ingestEvent: func(_ context.Context, _ string, _ IngestEvent) error {
+			return ErrInvalidManifestErr
+		},
+	}
+	sock, stop := startServer(t, h)
+	defer stop()
+	c := dial(t, sock)
+	defer c.Close()
+
+	params, _ := json.Marshal(IngestEventParams{
+		AgentID: "agt_xyz",
+		Event: IngestEvent{
+			Type:    "bad.event",
+			TS:      time.Now().UTC(),
+			Details: json.RawMessage(`{}`),
+		},
+	})
+	if err := WriteFrame(c, Request{Method: MethodIngestEvent, Params: params}); err != nil {
+		t.Fatalf("WriteFrame: %v", err)
+	}
+	var resp Response
+	if err := ReadFrame(c, &resp); err != nil {
+		t.Fatalf("ReadFrame: %v", err)
+	}
+	if resp.OK {
+		t.Fatalf("expected error response, got ok")
+	}
+	if resp.Error == nil || resp.Error.Code != ErrInvalidManifest {
+		t.Fatalf("expected INVALID_MANIFEST, got %+v", resp.Error)
 	}
 }
 

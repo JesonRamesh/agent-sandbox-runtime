@@ -29,6 +29,7 @@ import time
 
 
 WS_URL_DEFAULT = "ws://localhost:8765"
+SENDER_NAME = "p4-orchestrator"
 
 _TOOL_CALL_RE = re.compile(r'\[TOOL\]\s+(\w+)\s+called with:\s+(.+)')
 _RESULT_RE = re.compile(r'\[RESULT\]\s+(.+)')
@@ -42,9 +43,17 @@ def parse_tool_call_line(raw: str) -> dict:
     if not m:
         return {"raw": raw}
     tool_name, args_str = m.group(1), m.group(2).strip()
+    request_id = None
+    if " | request_id=" in args_str:
+        args_str, request_id = args_str.rsplit(" | request_id=", 1)
+        args_str = args_str.strip()
+        request_id = request_id.strip() or None
     # fetch_url args are a bare URL string; other tools use raw_args as fallback
     args = {"url": args_str} if tool_name == "fetch_url" else {"raw_args": args_str}
-    return {"raw": raw, "tool": tool_name, "args": args}
+    parsed = {"raw": raw, "tool": tool_name, "args": args}
+    if request_id:
+        parsed["request_id"] = request_id
+    return parsed
 
 
 def parse_tool_result_line(raw: str) -> dict:
@@ -87,8 +96,10 @@ class EventStreamer:
         try:
             import websocket
             self._ws = websocket.create_connection(url, timeout=3)
+            self._ws.send(json.dumps({"role": "sender", "name": SENDER_NAME}))
             print(f"[events] connected to {url}")
         except Exception as e:
+            self._ws = None
             print(f"[events] WebSocket unavailable ({e}), logging locally")
 
     def emit(

@@ -40,6 +40,7 @@ import json
 import os
 import socket
 import struct
+import threading
 from datetime import datetime, timezone
 from .manifest import AgentManifest
 
@@ -63,26 +64,45 @@ class DaemonClient:
         except OSError:
             return False
 
+    @staticmethod
+    def _recv_exact(sock: socket.socket, n: int) -> bytes:
+        """Read exactly n bytes or raise ConnectionError on early EOF."""
+        buf = bytearray()
+        while len(buf) < n:
+            chunk = sock.recv(n - len(buf))
+            if not chunk:
+                raise ConnectionError(
+                    f"daemon closed connection after {len(buf)}/{n} bytes"
+                )
+            buf.extend(chunk)
+        return bytes(buf)
+
     def _rpc(self, method: str, params: dict) -> dict | None:
         if not self._available:
             label = (params.get("manifest") or {}).get("name") or params.get("agent_id", "")
             print(f"[daemon-stub] {method} {label}")
             return None
+        s = None
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(self._path)
             payload = json.dumps({"method": method, "params": params}).encode()
             s.sendall(struct.pack(">I", len(payload)) + payload)
-            length = struct.unpack(">I", s.recv(4))[0]
-            resp = json.loads(s.recv(length))
-            s.close()
+            length = struct.unpack(">I", self._recv_exact(s, 4))[0]
+            resp = json.loads(self._recv_exact(s, length))
             if not resp.get("ok"):
                 err = resp.get("error", {})
                 print(f"[daemon] {method} error {err.get('code', '?')}: {err.get('message', resp)}")
             return resp
-        except OSError as e:
+        except (OSError, ConnectionError, struct.error, json.JSONDecodeError) as e:
             print(f"[daemon] RPC failed: {e}")
             return None
+        finally:
+            if s is not None:
+                try:
+                    s.close()
+                except OSError:
+                    pass
 
     def run_agent(self, manifest: AgentManifest) -> str | None:
         """Launch agent in sandbox. Returns opaque agent_id, or None if daemon unavailable."""
@@ -112,6 +132,90 @@ class DaemonClient:
         if resp and resp.get("ok"):
             return resp["result"]["agents"]
         return []
+
+    def stream_events(
+        self,
+        agent_id: str,
+        on_event,
+        *,
+        stop_event: threading.Event | None = None,
+    ) -> None:
+        """Subscribe to daemon events for one agent and invoke on_event(event)."""
+        if not self._available:
+            return
+        s = None
+        try:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            s.settimeout(0.5)
+            s.connect(self._path)
+            payload = json.dumps({
+                "method": "StreamEvents",
+                "params": {"agent_id": agent_id},
+            }).encode()
+            s.sendall(struct.pack(">I", len(payload)) + payload)
+            while not (stop_event and stop_event.is_set()):
+                frame = self._read_stream_frame(s, stop_event)
+                if frame is None:
+                    return
+                if not frame.get("ok"):
+                    err = frame.get("error", {})
+                    print(
+                        f"[daemon] StreamEvents error {err.get('code', '?')}: "
+                        f"{err.get('message', frame)}"
+                    )
+                    return
+                event = frame.get("result")
+                if isinstance(event, dict) and isinstance(event.get("event"), dict):
+                    event = event["event"]
+                if isinstance(event, dict):
+                    on_event(event)
+        except OSError as e:
+            if not (stop_event and stop_event.is_set()):
+                print(f"[daemon] StreamEvents failed: {e}")
+        finally:
+            if s is not None:
+                try:
+                    s.close()
+                except OSError:
+                    pass
+
+    def _read_stream_frame(
+        self,
+        sock: socket.socket,
+        stop_event: threading.Event | None = None,
+    ) -> dict | None:
+        try:
+            header = self._recv_exact_stream(sock, 4, stop_event)
+            if header is None:
+                return None
+            length = struct.unpack(">I", header)[0]
+            body = self._recv_exact_stream(sock, length, stop_event)
+            if body is None:
+                return None
+            return json.loads(body)
+        except (ConnectionError, struct.error, json.JSONDecodeError) as e:
+            if not (stop_event and stop_event.is_set()):
+                print(f"[daemon] StreamEvents read failed: {e}")
+            return None
+
+    def _recv_exact_stream(
+        self,
+        sock: socket.socket,
+        n: int,
+        stop_event: threading.Event | None = None,
+    ) -> bytes | None:
+        buf = bytearray()
+        while len(buf) < n:
+            if stop_event and stop_event.is_set():
+                return None
+            try:
+                chunk = sock.recv(n - len(buf))
+            except socket.timeout:
+                continue
+            if not chunk:
+                return None
+            buf.extend(chunk)
+        return bytes(buf)
 
     def ingest_event(self, agent_id: str, event_type: str, details: dict) -> bool:
         """Push an llm.* event into the daemon's unified pipeline (IngestEvent RPC).

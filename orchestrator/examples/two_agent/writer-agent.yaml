@@ -1,0 +1,12 @@
+name: writer-agent
+command: ["/usr/bin/python3", "/opt/agents/writer_agent.py"]
+allowed_hosts: []
+allowed_paths:
+  - /opt/agents/
+  - /tmp/agent-handoff/
+working_dir: /opt/agents
+env:
+  PYTHONUNBUFFERED: "1"
+user: "65534"
+timeout: "5m"
+description: "Local-only writer agent that reads the handoff file and produces the final output."
