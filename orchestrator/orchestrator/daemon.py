@@ -53,6 +53,8 @@ class DaemonClient:
         self._available = self._probe()
 
     def _probe(self) -> bool:
+        if not hasattr(socket, "AF_UNIX"):
+            return False
         try:
             s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             s.connect(self._path)

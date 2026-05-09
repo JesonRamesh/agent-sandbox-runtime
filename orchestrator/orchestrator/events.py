@@ -115,4 +115,4 @@ class EventStreamer:
             except Exception:
                 self._ws = None
         if event_type in ("session_start", "user_input", "tool_call", "tool_result", "agent_output", "crashed"):
-            print(f"[events] {agent} → {event_type}: {data}", flush=True)
+            print(f"[events] {agent} -> {event_type}: {data}", flush=True)
