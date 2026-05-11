@@ -158,21 +158,24 @@ It demonstrates the recommended pattern for process isolation: agents stay in
 separate OS processes and interact through an explicit handoff path rather than
 sharing memory or a PID.
 
-## Daemon mode status
+## Daemon mode
 
-What works in this branch:
+When `agentd` is running on `/run/agent-sandbox.sock`, the orchestrator:
 
-- direct launch through the Python orchestrator
-- viewer sender handshake
-- daemon lifecycle tracking via `StreamEvents`
-- forwarding `agent.stdout` / `agent.stderr` through the same line parser if
-  the daemon emits those events
+1. Submits the manifest via `RunAgent` — no `subprocess.Popen`, the daemon
+   handles `clone3` into the sandbox cgroup.
+2. Subscribes to `StreamEvents` for the returned `agent_id` and tracks
+   lifecycle from `agent.started` / `agent.exited` / `agent.crashed`.
+3. Receives every line the agent writes as `agent.stdout` / `agent.stderr`
+   events and parses `[TOOL]` / `[RESULT]` / `[USER]` / `[AGENT]` markers.
+4. Forwards parsed LLM events back into the daemon's unified pipeline via
+   `IngestEvent` as `llm.tool_call`, `llm.tool_result`, `llm.user_input`,
+   and `llm.agent_output`, so anything else subscribing to the daemon
+   stream (`agentctl logs`, alternate dashboards) sees them keyed by the
+   same `agent_id` as the kernel events.
 
-What is still blocked outside P4:
-
-- integrated daemon `IngestEvent` support
-- guaranteed `agent.stdout` / `agent.stderr` event emission from the integrated
-  daemon
+In local mode (daemon socket absent), the orchestrator falls back to
+`subprocess.Popen` and forwards events only to the viewer relay.
 
 ## Verification
 

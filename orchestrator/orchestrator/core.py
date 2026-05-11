@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .daemon import DaemonClient, SOCKET_PATH
 from .events import EventStreamer, WS_URL_DEFAULT
+from .log import logger
 from .manifest import AgentManifest, load_manifest
 from .process import AgentProcess, AgentState
 
@@ -41,7 +42,7 @@ class Orchestrator:
 
         agent.start()
         id_info = f"agent_id={agent.agent_id}" if agent.agent_id else f"pid={agent.pid}"
-        print(f"[orchestrator] launched '{manifest.name}' {id_info}", flush=True)
+        logger.info("launched '%s' %s", manifest.name, id_info)
         return agent
 
     def launch_many(
@@ -66,7 +67,7 @@ class Orchestrator:
         if not agent:
             raise KeyError(f"No agent named '{name}'")
         agent.stop()
-        print(f"[orchestrator] stopped '{name}'")
+        logger.info("stopped '%s'", name)
 
     def stop_all(self):
         with self._lock:
@@ -74,8 +75,13 @@ class Orchestrator:
         for name in names:
             try:
                 self.stop(name)
-            except Exception:
-                pass
+            except KeyError:
+                # Agent removed concurrently — nothing to do.
+                continue
+            except Exception as exc:
+                # Don't let a single transient stop failure abort the rest.
+                # Log loudly so a real daemon-side bug surfaces.
+                logger.warning("stop '%s' failed: %s", name, exc)
 
     def list_agents(self) -> list[dict]:
         with self._lock:
@@ -112,9 +118,11 @@ class Orchestrator:
                     and agent._restart_count < self._max_restarts
                 ):
                     agent._restart_count += 1
-                    print(
-                        f"[orchestrator] restarting '{agent.name}' "
-                        f"(attempt {agent._restart_count}/{self._max_restarts})"
+                    logger.info(
+                        "restarting '%s' (attempt %d/%d)",
+                        agent.name,
+                        agent._restart_count,
+                        self._max_restarts,
                     )
                     agent.start()
 

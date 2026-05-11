@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from orchestrator.cli import run as cli_run
+from orchestrator.daemon import DaemonClient
 from orchestrator.events import EventStreamer, parse_tool_call_line
 from orchestrator.manifest import ManifestError, load_manifest
 from orchestrator.process import AgentProcess, AgentState
@@ -41,6 +42,7 @@ class FakeDaemon:
         self._available = True
         self._events = events
         self.stopped = []
+        self.ingested: list[tuple[str, str, dict]] = []
 
     def run_agent(self, manifest):
         return "agt_test1234"
@@ -54,6 +56,12 @@ class FakeDaemon:
             if stop_event and stop_event.is_set():
                 return
             on_event(event)
+
+    def ingest_event(self, agent_id, event_type, details):
+        if not event_type.startswith("llm."):
+            raise ValueError(f"IngestEvent type must be prefixed 'llm.', got '{event_type}'")
+        self.ingested.append((agent_id, event_type, details))
+        return True
 
 
 class EventParsingTests(unittest.TestCase):
@@ -99,6 +107,22 @@ class ManifestTests(unittest.TestCase):
             with self.assertRaises(ManifestError) as ctx:
                 load_manifest(path)
         self.assertIn("is empty", str(ctx.exception))
+
+    def test_load_manifest_invalid_yaml_includes_line_column(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bad.yaml"
+            # Invalid: tab indentation in a block sequence makes PyYAML mark
+            # the offending location.
+            path.write_text("name: demo\ncommand:\n\t- python\n", encoding="utf-8")
+            with self.assertRaises(ManifestError) as ctx:
+                load_manifest(path)
+        msg = str(ctx.exception)
+        self.assertIn(str(path), msg)
+        # path:line:col prefix means a colon-separated line and column appear
+        # after the path. We don't pin exact numbers because PyYAML versions
+        # differ — but the marker must be present.
+        location_suffix = msg.split(str(path), 1)[1]
+        self.assertRegex(location_suffix, r"^:\d+:\d+:")
 
     def test_load_manifest_raises_clean_error_for_missing_required_field(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -302,6 +326,25 @@ class RunnerTests(unittest.TestCase):
             self.assertFalse(agent_b.skipped)
 
 
+class DaemonClientTests(unittest.TestCase):
+    def test_disappeared_flag_is_false_when_daemon_never_existed(self):
+        # A path that doesn't exist (and never will) — startup probe fails,
+        # so .disappeared should be False (it means "vanished after being
+        # there", not "never there").
+        client = DaemonClient(socket_path="/tmp/no-such-socket-orchestrator-test")
+        self.assertFalse(client._was_available_at_startup)
+        self.assertFalse(client.disappeared)
+
+    def test_disappeared_flag_flips_after_socket_loss(self):
+        client = DaemonClient(socket_path="/tmp/no-such-socket-orchestrator-test")
+        # Simulate "daemon was there at startup, now isn't" without touching
+        # a real socket. The internal flags are the public contract for the
+        # orchestrator's loud-fallback logic.
+        client._was_available_at_startup = True
+        client._available = False
+        self.assertTrue(client.disappeared)
+
+
 class CliTests(unittest.TestCase):
     def test_cli_validate_emits_json(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -399,6 +442,89 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
         tool_call = next(event for event in streamer.events if event["type"] == "tool_call")
         self.assertEqual(tool_call["data"]["request_id"], "req_1")
         self.assertEqual(tool_call["data"]["args"]["url"], "https://example.com")
+
+    def test_daemon_mode_forwards_llm_events_via_ingest_event(self):
+        streamer = RecordingStreamer()
+        daemon = FakeDaemon(
+            [
+                {"type": "agent.started", "pid": 4321, "details": {}},
+                {
+                    "type": "agent.stdout",
+                    "pid": 4321,
+                    "details": {
+                        "line": "[TOOL] fetch_url called with: https://example.com | request_id=req_1"
+                    },
+                },
+                {
+                    "type": "agent.stdout",
+                    "pid": 4321,
+                    "details": {
+                        "line": '[RESULT] {"tool":"fetch_url","ok":true,"request_id":"req_1"}'
+                    },
+                },
+                {
+                    "type": "agent.stdout",
+                    "pid": 4321,
+                    "details": {"line": "[AGENT] done"},
+                },
+                {
+                    "type": "agent.exited",
+                    "pid": 4321,
+                    "details": {"exit_code": 0},
+                },
+            ]
+        )
+        manifest = types.SimpleNamespace(
+            name="demo-agent",
+            command=["python", "demo_agent.py"],
+            allowed_hosts=["example.com"],
+            allowed_paths=[],
+            env={},
+            mode="enforce",
+        )
+
+        agent = AgentProcess(manifest, streamer, daemon)
+        agent.start()
+        agent.wait(timeout=1)
+
+        ingested_types = [event_type for _, event_type, _ in daemon.ingested]
+        self.assertIn("llm.tool_call", ingested_types)
+        self.assertIn("llm.tool_result", ingested_types)
+        self.assertIn("llm.agent_output", ingested_types)
+        # stdout lines must NOT be re-ingested (daemon already emits agent.stdout).
+        self.assertNotIn("llm.stdout", ingested_types)
+
+        tool_call_agent_id, _, tool_call_details = next(
+            entry for entry in daemon.ingested if entry[1] == "llm.tool_call"
+        )
+        self.assertEqual(tool_call_agent_id, "agt_test1234")
+        self.assertEqual(tool_call_details["tool"], "fetch_url")
+        self.assertEqual(tool_call_details["request_id"], "req_1")
+
+    def test_local_mode_does_not_call_ingest_event(self):
+        streamer = RecordingStreamer()
+
+        class UnavailableDaemon:
+            _available = False
+
+            def ingest_event(self, *_args, **_kwargs):  # pragma: no cover - guard
+                raise AssertionError("ingest_event should not be called in local mode")
+
+        manifest = types.SimpleNamespace(
+            name="local-agent",
+            command=["python", "-c", "print('[TOOL] noop called with: x')"],
+            allowed_hosts=[],
+            allowed_paths=[],
+            env={},
+            mode="enforce",
+        )
+        agent = AgentProcess(manifest, streamer, UnavailableDaemon())
+        agent.start()
+        agent.wait(timeout=2)
+
+        # Sanity: events still flowed to the streamer; nothing tried the daemon.
+        event_types = [event["type"] for event in streamer.events]
+        self.assertIn("tool_call", event_types)
 
     def test_daemon_mode_wait_returns_none_until_stream_finishes(self):
         streamer = RecordingStreamer()

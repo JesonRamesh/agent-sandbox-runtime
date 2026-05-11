@@ -5,7 +5,7 @@ from pathlib import Path
 
 import yaml
 
-from .manifest import AgentManifest, load_manifest
+from .manifest import AgentManifest, _format_yaml_location, load_manifest
 
 
 class ScenarioError(ValueError):
@@ -49,7 +49,10 @@ def load_scenario(path: str | Path) -> Scenario:
     except OSError as e:
         raise ScenarioError(f"scenario '{scenario_path}' could not be read: {e}") from e
     except yaml.YAMLError as e:
-        raise ScenarioError(f"scenario '{scenario_path}' is not valid YAML: {e}") from e
+        problem = getattr(e, "problem", None) or str(e)
+        raise ScenarioError(
+            f"{_format_yaml_location(scenario_path, e)}: invalid YAML: {problem}"
+        ) from e
 
     if not isinstance(data, dict):
         raise ScenarioError(f"scenario '{scenario_path}' must be a YAML mapping")

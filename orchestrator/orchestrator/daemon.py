@@ -42,6 +42,7 @@ import socket
 import struct
 import threading
 from datetime import datetime, timezone
+from .log import logger
 from .manifest import AgentManifest
 
 
@@ -51,7 +52,11 @@ SOCKET_PATH = os.environ.get("AGENT_SANDBOX_SOCKET", "/run/agent-sandbox.sock")
 class DaemonClient:
     def __init__(self, socket_path: str = SOCKET_PATH):
         self._path = socket_path
-        self._available = self._probe()
+        # _was_available_at_startup is set once and never changes; it lets us
+        # distinguish "daemon was never there → fall back to local mode" from
+        # "daemon was reachable then vanished → real bug, log loudly".
+        self._was_available_at_startup = self._probe()
+        self._available = self._was_available_at_startup
 
     def _probe(self) -> bool:
         if not hasattr(socket, "AF_UNIX"):
@@ -63,6 +68,16 @@ class DaemonClient:
             return True
         except OSError:
             return False
+
+    @property
+    def disappeared(self) -> bool:
+        """True if the daemon was reachable at startup but is no longer.
+
+        Callers should treat this as a serious condition: agents started in
+        daemon mode now have no enforcement plane to talk to. Fresh launches
+        will silently fall back to local mode unless callers refuse.
+        """
+        return self._was_available_at_startup and not self._available
 
     @staticmethod
     def _recv_exact(sock: socket.socket, n: int) -> bytes:
@@ -80,7 +95,7 @@ class DaemonClient:
     def _rpc(self, method: str, params: dict) -> dict | None:
         if not self._available:
             label = (params.get("manifest") or {}).get("name") or params.get("agent_id", "")
-            print(f"[daemon-stub] {method} {label}")
+            logger.debug("daemon-stub: %s %s", method, label)
             return None
         s = None
         try:
@@ -92,10 +107,29 @@ class DaemonClient:
             resp = json.loads(self._recv_exact(s, length))
             if not resp.get("ok"):
                 err = resp.get("error", {})
-                print(f"[daemon] {method} error {err.get('code', '?')}: {err.get('message', resp)}")
+                logger.warning(
+                    "daemon %s error %s: %s",
+                    method,
+                    err.get("code", "?"),
+                    err.get("message", resp),
+                )
             return resp
         except (OSError, ConnectionError, struct.error, json.JSONDecodeError) as e:
-            print(f"[daemon] RPC failed: {e}")
+            # A failed RPC after the daemon was previously reachable means
+            # it has crashed or been restarted. Mark unavailable so the
+            # orchestrator can detect the drop via .disappeared rather than
+            # silently degrading new launches to local (unsandboxed) mode.
+            if self._available and isinstance(e, (OSError, ConnectionError)):
+                self._available = self._probe()
+            if self.disappeared:
+                logger.error(
+                    "daemon RPC %s failed and daemon socket %s is no longer reachable: %s",
+                    method,
+                    self._path,
+                    e,
+                )
+            else:
+                logger.warning("daemon RPC %s failed: %s", method, e)
             return None
         finally:
             if s is not None:
@@ -159,9 +193,10 @@ class DaemonClient:
                     return
                 if not frame.get("ok"):
                     err = frame.get("error", {})
-                    print(
-                        f"[daemon] StreamEvents error {err.get('code', '?')}: "
-                        f"{err.get('message', frame)}"
+                    logger.warning(
+                        "daemon StreamEvents error %s: %s",
+                        err.get("code", "?"),
+                        err.get("message", frame),
                     )
                     return
                 event = frame.get("result")
@@ -171,7 +206,7 @@ class DaemonClient:
                     on_event(event)
         except OSError as e:
             if not (stop_event and stop_event.is_set()):
-                print(f"[daemon] StreamEvents failed: {e}")
+                logger.warning("daemon StreamEvents failed: %s", e)
         finally:
             if s is not None:
                 try:
@@ -195,7 +230,7 @@ class DaemonClient:
             return json.loads(body)
         except (ConnectionError, struct.error, json.JSONDecodeError) as e:
             if not (stop_event and stop_event.is_set()):
-                print(f"[daemon] StreamEvents read failed: {e}")
+                logger.warning("daemon StreamEvents read failed: %s", e)
             return None
 
     def _recv_exact_stream(

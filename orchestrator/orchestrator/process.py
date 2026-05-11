@@ -5,6 +5,7 @@ import threading
 import time
 import uuid
 from enum import Enum
+from .log import logger
 from .manifest import AgentManifest
 from .events import (
     EventStreamer,
@@ -88,13 +89,19 @@ class AgentProcess:
                     scenario_id=self._scenario_id,
                     agent_id=self._agent_id,
                 )
-                print(f"[orchestrator] '{self.name}' running in daemon sandbox (id={self._agent_id})", flush=True)
-                # Daemon mode now tracks lifecycle via StreamEvents. If the daemon
-                # emits agent.stdout / agent.stderr in a newer build, we forward
-                # those lines through the same event parsing path as local mode.
+                logger.info("'%s' running in daemon sandbox (id=%s)", self.name, self._agent_id)
                 return
         self._agent_id = None
         self._stream_stop = None
+        if self._daemon is not None and getattr(self._daemon, "disappeared", False):
+            # Daemon was reachable when the Orchestrator was constructed but
+            # is now gone. Falling back to local mode here means the agent
+            # runs without kernel enforcement — the operator must know.
+            logger.error(
+                "daemon was reachable at startup but is now unreachable; "
+                "'%s' will run locally WITHOUT sandbox enforcement",
+                self.name,
+            )
         self._start_local()
 
     def _start_local(self):
@@ -182,54 +189,50 @@ class AgentProcess:
             )
         self._done.set()
 
+    # event types that get forwarded to the daemon's unified pipeline as
+    # llm.* IngestEvents (in daemon mode). "stdout" is intentionally excluded
+    # — the daemon already emits agent.stdout for every line, so re-ingesting
+    # would double the event volume and create a self-referential loop.
+    _DAEMON_INGEST_TYPES = frozenset({
+        "tool_call", "tool_result", "user_input", "agent_output",
+    })
+
     def _emit_line_events(self, line: str) -> None:
+        self._emit("stdout", {"line": line})
+        user_input = parse_user_input_line(line)
+        if user_input:
+            self._emit("user_input", user_input)
+        elif line.startswith("[TOOL]"):
+            self._emit("tool_call", parse_tool_call_line(line))
+        elif line.startswith("[RESULT]"):
+            self._emit("tool_result", parse_tool_result_line(line))
+        else:
+            agent_output = parse_agent_output_line(line)
+            if agent_output:
+                self._emit("agent_output", agent_output)
+
+    def _emit(self, event_type: str, data: dict) -> None:
+        """Fan an LLM-level event to P5 via the streamer and, in daemon mode,
+        also push it into the daemon's pipeline so subscribers of the unified
+        event stream (agentctl tail, alternate dashboards) see it too."""
         self.streamer.emit(
             self.name,
-            "stdout",
-            {"line": line},
+            event_type,
+            data,
             session_id=self._session_id,
             scenario_id=self._scenario_id,
             agent_id=self._agent_id,
         )
-        user_input = parse_user_input_line(line)
-        if user_input:
-            self.streamer.emit(
-                self.name,
-                "user_input",
-                user_input,
-                session_id=self._session_id,
-                scenario_id=self._scenario_id,
-                agent_id=self._agent_id,
-            )
-        elif line.startswith("[TOOL]"):
-            self.streamer.emit(
-                self.name,
-                "tool_call",
-                parse_tool_call_line(line),
-                session_id=self._session_id,
-                scenario_id=self._scenario_id,
-                agent_id=self._agent_id,
-            )
-        elif line.startswith("[RESULT]"):
-            self.streamer.emit(
-                self.name,
-                "tool_result",
-                parse_tool_result_line(line),
-                session_id=self._session_id,
-                scenario_id=self._scenario_id,
-                agent_id=self._agent_id,
-            )
-        else:
-            agent_output = parse_agent_output_line(line)
-            if agent_output:
-                self.streamer.emit(
-                    self.name,
-                    "agent_output",
-                    agent_output,
-                    session_id=self._session_id,
-                    scenario_id=self._scenario_id,
-                    agent_id=self._agent_id,
-                )
+        if event_type not in self._DAEMON_INGEST_TYPES:
+            return
+        if not self._agent_id or self._daemon is None:
+            return
+        if not getattr(self._daemon, "_available", False):
+            return
+        try:
+            self._daemon.ingest_event(self._agent_id, f"llm.{event_type}", data)
+        except Exception as exc:  # daemon transient failure shouldn't break the agent
+            logger.warning("ingest_event '%s' failed: %s", event_type, exc)
 
     def _watch_daemon_events(self) -> None:
         if not self._daemon or not self._agent_id:

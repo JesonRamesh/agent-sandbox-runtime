@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 import sys
 
 from .core import Orchestrator
 from .daemon import SOCKET_PATH
 from .events import WS_URL_DEFAULT
+from .log import configure as configure_logger, logger
+from .manifest import ManifestError
 from .runner import ScenarioRunner
 from .scenario import ScenarioError, load_scenario
 
@@ -16,6 +19,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="orchestrator",
         description="Launch one or more sandboxed agents through the P4 orchestrator.",
+    )
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument(
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="suppress orchestrator log output (warnings/errors still print)",
+    )
+    verbosity.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="emit DEBUG-level logs with timestamps",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -74,12 +90,19 @@ def run(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.verbose:
+        configure_logger(level=logging.DEBUG, verbose=True)
+    elif args.quiet:
+        configure_logger(level=logging.WARNING)
+    else:
+        configure_logger(level=logging.INFO)
+
     try:
         if args.command == "run":
             return _run_scenario(args)
         if args.command == "validate":
             return _validate_scenario(args)
-    except ScenarioError as e:
+    except (ScenarioError, ManifestError) as e:
         return _print_error(str(e), json_mode=getattr(args, "json", False))
     except Exception as e:  # pragma: no cover - final safety net for CLI UX
         return _print_error(str(e), json_mode=getattr(args, "json", False))

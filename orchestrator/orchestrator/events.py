@@ -27,6 +27,8 @@ import json
 import re
 import time
 
+from .log import logger
+
 
 WS_URL_DEFAULT = "ws://localhost:8765"
 SENDER_NAME = "p4-orchestrator"
@@ -97,10 +99,10 @@ class EventStreamer:
             import websocket
             self._ws = websocket.create_connection(url, timeout=3)
             self._ws.send(json.dumps({"role": "sender", "name": SENDER_NAME}))
-            print(f"[events] connected to {url}")
+            logger.info("connected to viewer relay at %s", url)
         except Exception as e:
             self._ws = None
-            print(f"[events] WebSocket unavailable ({e}), logging locally")
+            logger.warning("viewer relay unavailable (%s); falling back to local logging", e)
 
     def emit(
         self,
@@ -126,4 +128,4 @@ class EventStreamer:
             except Exception:
                 self._ws = None
         if event_type in ("session_start", "user_input", "tool_call", "tool_result", "agent_output", "crashed"):
-            print(f"[events] {agent} -> {event_type}: {data}", flush=True)
+            logger.info("%s -> %s: %s", agent, event_type, data)
