@@ -1,0 +1,27 @@
+name: code-exec-agent
+command:
+  - python
+  - -c
+  - |
+    import sys
+    import subprocess
+    import tempfile
+    cmd = [
+        sys.executable,
+        "-c",
+        "from pathlib import Path; import tempfile; "
+        "sandbox = Path(tempfile.gettempdir()) / 'sandbox'; "
+        "sandbox.mkdir(parents=True, exist_ok=True); "
+        "(sandbox / 'hello.txt').write_text('sandbox hello\\n', encoding='utf-8'); "
+        "print(f'child wrote {sandbox / \"hello.txt\"}')",
+    ]
+    completed = subprocess.run(cmd, check=True, capture_output=True, text=True)
+    print(f"[TOOL] run_command called with: {' '.join(cmd)}")
+    print('[RESULT] {"tool":"run_command","ok":true,"request_id":"code_exec_demo"}')
+    print(f"[AGENT] {completed.stdout.strip()}")
+allowed_hosts: []
+allowed_paths:
+  - /tmp/sandbox
+allowed_bins:
+  - /usr/bin/python3
+description: "Local-only example of an agent that may exec one Python interpreter."

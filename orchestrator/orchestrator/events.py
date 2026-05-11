@@ -24,7 +24,9 @@ Event types emitted:
 """
 from __future__ import annotations
 import json
+import queue
 import re
+import threading
 import time
 
 from .log import logger
@@ -89,20 +91,121 @@ def parse_agent_output_line(raw: str) -> dict | None:
 
 
 class EventStreamer:
-    def __init__(self, ws_url: str | None = None):
+    def __init__(
+        self,
+        ws_url: str | None = None,
+        *,
+        max_buffered_events: int = 256,
+        reconnect_base_seconds: float = 0.5,
+        reconnect_max_seconds: float = 5.0,
+    ):
         self._ws = None
+        self._ws_url = ws_url
+        self._queue: queue.Queue[dict] | None = None
+        self._stop = threading.Event()
+        self._sender_thread: threading.Thread | None = None
+        self._max_buffered_events = max_buffered_events
+        self._reconnect_base_seconds = reconnect_base_seconds
+        self._reconnect_max_seconds = reconnect_max_seconds
+        self._drop_warnings = 0
         if ws_url:
-            self._connect(ws_url)
+            self._queue = queue.Queue(maxsize=max_buffered_events)
+            self._sender_thread = threading.Thread(target=self._sender_loop, daemon=True)
+            self._sender_thread.start()
 
-    def _connect(self, url: str):
+    def _connect(self, url: str) -> bool:
         try:
             import websocket
             self._ws = websocket.create_connection(url, timeout=3)
             self._ws.send(json.dumps({"role": "sender", "name": SENDER_NAME}))
             logger.info("connected to viewer relay at %s", url)
+            return True
         except Exception as e:
             self._ws = None
             logger.warning("viewer relay unavailable (%s); falling back to local logging", e)
+            return False
+
+    def close(self) -> None:
+        self._stop.set()
+        if self._sender_thread is not None:
+            self._sender_thread.join(timeout=1)
+        self._close_socket()
+
+    def _close_socket(self) -> None:
+        if self._ws is None:
+            return
+        try:
+            self._ws.close()
+        except Exception:
+            pass
+        self._ws = None
+
+    def _sender_loop(self) -> None:
+        if self._queue is None or not self._ws_url:
+            return
+
+        pending: dict | None = None
+        backoff = self._reconnect_base_seconds
+        while not self._stop.is_set():
+            if self._ws is None and not self._connect(self._ws_url):
+                self._stop.wait(backoff)
+                backoff = min(backoff * 2, self._reconnect_max_seconds)
+                continue
+
+            if pending is None:
+                try:
+                    pending = self._queue.get(timeout=0.25)
+                except queue.Empty:
+                    backoff = self._reconnect_base_seconds
+                    continue
+
+            try:
+                self._ws.send(json.dumps(pending))
+                pending = None
+                backoff = self._reconnect_base_seconds
+            except Exception as exc:
+                logger.warning("viewer relay send failed: %s", exc)
+                self._close_socket()
+                self._stop.wait(backoff)
+                backoff = min(backoff * 2, self._reconnect_max_seconds)
+
+    def _enqueue(self, event: dict) -> None:
+        if self._queue is None:
+            return
+        try:
+            self._queue.put_nowait(event)
+            return
+        except queue.Full:
+            pass
+
+        try:
+            dropped = self._queue.get_nowait()
+        except queue.Empty:
+            dropped = None
+        try:
+            self._queue.put_nowait(event)
+        except queue.Full:
+            return
+
+        self._drop_warnings += 1
+        logger.warning(
+            "viewer relay queue full; dropped oldest event type=%s agent=%s (drop_count=%d)",
+            dropped.get("type") if isinstance(dropped, dict) else "?",
+            dropped.get("agent") if isinstance(dropped, dict) else "?",
+            self._drop_warnings,
+        )
+
+    @staticmethod
+    def _should_log_locally(event_type: str) -> bool:
+        return event_type in (
+            "session_start",
+            "user_input",
+            "tool_call",
+            "tool_result",
+            "agent_output",
+            "injection_suspected",
+            "crashed",
+        )
 
     def emit(
         self,
@@ -121,11 +224,7 @@ class EventStreamer:
             event["scenario_id"] = scenario_id
         if agent_id:
             event["agent_id"] = agent_id
-        if self._ws:
-            try:
-                self._ws.send(json.dumps(event))
-                return
-            except Exception:
-                self._ws = None
-        if event_type in ("session_start", "user_input", "tool_call", "tool_result", "agent_output", "crashed"):
+        if self._queue is not None:
+            self._enqueue(event)
+        if self._should_log_locally(event_type):
             logger.info("%s -> %s: %s", agent, event_type, data)

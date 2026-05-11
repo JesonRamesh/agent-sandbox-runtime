@@ -97,12 +97,18 @@ class Orchestrator:
                 for a in self._agents.values()
             ]
 
-    def wait_for(self, name: str, timeout: float | None = None) -> int | None:
+    def wait_for(
+        self,
+        name: str,
+        timeout: float | None = None,
+        *,
+        cancel_event: threading.Event | None = None,
+    ) -> int | None:
         with self._lock:
             agent = self._agents.get(name)
         if not agent:
             raise KeyError(f"No agent named '{name}'")
-        return agent.wait(timeout=timeout)
+        return agent.wait(timeout=timeout, cancel_event=cancel_event)
 
     # --- internal ---
 

@@ -48,12 +48,26 @@ Validate a scenario and every referenced manifest before launch with:
 python -m orchestrator validate -f examples/two_agent/scenario.yaml --json
 ```
 
+Install the package and console script from the repo root with:
+
+```bash
+python -m pip install -e .
+orchestrator validate -f orchestrator/examples/two_agent/scenario.yaml
+```
+
+Inspect the daemon's current view of running agents with:
+
+```bash
+python -m orchestrator status
+```
+
 ### Scenario format
 
 ```yaml
 name: research-writer-pipeline
 description: Research runs first, writer runs only after successful completion.
 stagger_seconds: 0.5
+max_retries: 1
 agents:
   - id: research
     manifest: ./research-agent.yaml
@@ -73,6 +87,20 @@ Current scenario-agent fields:
 - `depends_on`: other scenario agent ids that must finish first
 - `launch_when`: `success` or `complete`
 - `description`: optional human note
+
+Top-level scenario fields:
+
+- `name`
+- `description`
+- `stagger_seconds`
+- `max_retries`
+- `agents`
+
+JSON Schema for editors lives at:
+
+```text
+orchestrator/orchestrator/schema/scenario.schema.json
+```
 
 When a run finishes, the orchestrator can emit a machine-readable summary:
 
@@ -158,6 +186,22 @@ It demonstrates the recommended pattern for process isolation: agents stay in
 separate OS processes and interact through an explicit handoff path rather than
 sharing memory or a PID.
 
+### Single-agent quickstart
+
+Use `examples/single_agent/` for the smallest scenario in the repo:
+
+```bash
+python -m orchestrator run -f examples/single_agent/scenario.yaml
+```
+
+### Fanout and code exec
+
+Two more sample scenarios are available:
+
+- `examples/fanout/` launches three independent agents in parallel.
+- `examples/code_exec/` shows an agent with no network access, one allowed
+  binary, and one writable path.
+
 ## Daemon mode
 
 When `agentd` is running on `/run/agent-sandbox.sock`, the orchestrator:
@@ -183,4 +227,16 @@ Run the P4 tests with:
 
 ```bash
 python -m unittest discover -s tests -v
+```
+
+Per-agent orchestrator logs are written under:
+
+```text
+~/.cache/agent-sandbox/orchestrator/<scenario-or-session>/<agent>.log
+```
+
+Run the all-in-one Linux bootstrap from the repo root with:
+
+```bash
+bash scripts/quickstart.sh
 ```

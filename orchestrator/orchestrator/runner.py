@@ -43,6 +43,8 @@ class ScenarioRunSummary:
     scenario_name: str
     scenario_id: str
     status: str
+    attempt: int
+    max_retries: int
     started_at: str
     finished_at: str
     duration_sec: float
@@ -64,9 +66,24 @@ class ScenarioRunner:
         self._poll_interval = poll_interval
 
     def run(self, scenario: Scenario) -> ScenarioRunSummary:
+        scenario_id = build_scenario_id(scenario.name)
+        attempt = 1
+        while True:
+            summary = self._run_once(scenario, scenario_id=scenario_id, attempt=attempt)
+            if summary.status == "success" or attempt > scenario.max_retries:
+                return summary
+            self._orchestrator.stop_all()
+            attempt += 1
+
+    def _run_once(
+        self,
+        scenario: Scenario,
+        *,
+        scenario_id: str,
+        attempt: int,
+    ) -> ScenarioRunSummary:
         scenario_started_at = utc_now()
         scenario_started_monotonic = time.time()
-        scenario_id = build_scenario_id(scenario.name)
 
         pending = list(scenario.agents)
         running: dict[str, tuple[ScenarioAgent, AgentProcess, float]] = {}
@@ -173,6 +190,8 @@ class ScenarioRunner:
             scenario_name=scenario.name,
             scenario_id=scenario_id,
             status=status,
+            attempt=attempt,
+            max_retries=scenario.max_retries,
             started_at=scenario_started_at,
             finished_at=finished_at,
             duration_sec=duration_sec,
@@ -214,6 +233,8 @@ class ScenarioRunner:
             dep_summaries = [summaries.get(dep_id) for dep_id in agent.depends_on]
             if any(summary is None for summary in dep_summaries):
                 continue
+            if any(not self._summary_finished(summary) for summary in dep_summaries):
+                continue
             if any(not self._summary_succeeded(summary) for summary in dep_summaries):
                 blocked.append((agent, "dependency_failed"))
         return blocked
@@ -221,3 +242,7 @@ class ScenarioRunner:
     @staticmethod
     def _summary_succeeded(summary: AgentRunSummary) -> bool:
         return summary.launched and not summary.skipped and summary.state == "stopped" and summary.exit_code in (0, None)
+
+    @staticmethod
+    def _summary_finished(summary: AgentRunSummary) -> bool:
+        return summary.skipped or summary.state in {"stopped", "crashed"}

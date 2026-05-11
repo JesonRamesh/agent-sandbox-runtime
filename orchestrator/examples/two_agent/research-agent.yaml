@@ -1,13 +1,26 @@
 name: research-agent
-command: ["/usr/bin/python3", "/opt/agents/research_agent.py"]
+command:
+  - python
+  - -c
+  - |
+    import tempfile
+    from pathlib import Path
+    handoff = Path(tempfile.gettempdir()) / "agent-handoff" / "research.txt"
+    handoff.parent.mkdir(parents=True, exist_ok=True)
+    handoff.write_text(
+        "Three sandbox takeaways:\n"
+        "1. Kernel policy beats prompt injection.\n"
+        "2. Multi-agent isolation keeps privileges narrow.\n"
+        "3. Observability matters as much as blocking.\n",
+        encoding="utf-8",
+    )
+    print(f"[AGENT] research handoff written to {handoff}")
 allowed_hosts:
   - api.openai.com:443
 allowed_paths:
-  - /opt/agents/
   - /tmp/agent-handoff/
-working_dir: /opt/agents
 env:
   PYTHONUNBUFFERED: "1"
 user: "65534"
 timeout: "5m"
-description: "Networked research agent that writes a handoff file for the writer."
+description: "Research-stage agent that writes a handoff file for the writer."

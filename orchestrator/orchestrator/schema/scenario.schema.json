@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-sandbox.local/orchestrator/scenario.schema.json",
+  "title": "Orchestrator Scenario",
+  "description": "Multi-agent scenario configuration for the agent-sandbox orchestrator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["agents"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string"
+    },
+    "stagger_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "max_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "How many times to rerun the whole scenario after a failed attempt."
+    },
+    "agents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    }
+  },
+  "$defs": {
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "manifest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative or absolute path to an agent manifest."
+        },
+        "depends_on": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "launch_when": {
+          "type": "string",
+          "enum": ["success", "complete"]
+        },
+        "description": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,9 @@
+name: gamma-agent
+command: ["python", "examples/fanout/fanout_agent.py"]
+allowed_hosts:
+  - example.com:443
+allowed_paths: []
+env:
+  AGENT_LABEL: gamma
+  ALLOWED_HOSTS_LABEL: example.com:443
+description: "Fanout agent with one arbitrary allow-listed host."

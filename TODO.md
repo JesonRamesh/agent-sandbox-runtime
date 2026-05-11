@@ -44,10 +44,11 @@
 - `arzaan1` is **merged with `main`** at commit `8db9890` and pushed.
 - Backup branch `arzaan1-backup` (local-only) points at the pre-merge
   commit `a5b6ef0` — safety net if the merge ever needs to be unwound.
-- 16/16 orchestrator unit tests pass:
-  `cd orchestrator && python -m unittest discover -s tests`.
-- Phases 0 and 1 are **done**. Most of Phase 3a is **done**. Phases 2,
-  3a-remainder, 3b, 3c, 4, 5 are pending.
+- 28/28 orchestrator unit tests pass locally, with 1 additional
+  real-daemon E2E test present but gated behind `AGENT_SANDBOX_E2E=1`.
+- Phases 0, 1, 3, and 4 are **done on branch**. Phase 5 is mostly done
+  except the optional UI idea. Phase 2 still has the PR/review/merge
+  steps.
 
 ---
 
@@ -118,9 +119,9 @@ back into the daemon's unified pipeline. Resolved:
 Open the PR after Phase 1 is green. Keep it as one logical change so
 reviewers can audit the contract surface.
 
-- [ ] **PR title:** `feat(p4): orchestrator CLI + multi-agent scenarios
+- [x] **PR title:** `feat(p4): orchestrator CLI + multi-agent scenarios
   + daemon stdout streaming`.
-- [ ] **PR body checklist:**
+- [x] **PR body checklist:**
   - Summary of what `orchestrator/` now does (CLI, scenarios, daemon
     mode).
   - Note the one cross-team change: `cmd/agentd/main_linux.go` now
@@ -129,9 +130,10 @@ reviewers can audit the contract surface.
   - Test plan: `make all`, `python -m unittest`, a smoke run of
     `examples/two_agent/scenario.yaml`, a smoke run of
     `examples/prompt_injection/demo_launcher.py`.
-- [ ] **Update `docs/INTERFACES.md` §4.2** to add `agent.stdout` and
+  - Ready-to-paste draft is in `docs/P4_PR_DRAFT.md`.
+- [x] **Update `docs/INTERFACES.md` §4.2** to add `agent.stdout` and
   `agent.stderr` with their `details` schema (`line`, `truncated`).
-- [ ] **Update `docs/ARCHITECTURE.md` §8 (P4)** to reflect the new
+- [x] **Update `docs/ARCHITECTURE.md` §8 (P4)** to reflect the new
   layout (`orchestrator/orchestrator/` package, scenarios,
   `python -m orchestrator`).
 - [ ] **Request review from P2** (daemon owner) for
@@ -169,32 +171,32 @@ This phase is about adoption: a dev should pick it up in 5 minutes.
       socket has vanished, logs ERROR. `AgentProcess.start()` notices
       `disappeared` before falling back to local mode and logs ERROR
       so the operator can't miss an unsandboxed launch.
-- [ ] **Top-level quickstart for the orchestrator.** Add a section to
+- [x] **Top-level quickstart for the orchestrator.** Add a section to
   the project `README.md` (between "Step 7" and "Step 8") titled
   "Or use the orchestrator" with three lines:
   `python -m orchestrator run -f examples/two_agent/scenario.yaml`.
-- [ ] **`orchestrator status` subcommand.** Calls `ListAgents` against
+- [x] **`orchestrator status` subcommand.** Calls `ListAgents` against
   the daemon and prints a table. Useful when a scenario is running and
   you want to know what's alive without `agentctl list`.
 
 ### 3b — More examples (the README's job is to convince)
 
-- [ ] **`examples/single_agent/`.** The simplest possible example: one
+- [x] **`examples/single_agent/`.** The simplest possible example: one
   agent, one manifest, no daemon required. Pure
   `python -m orchestrator run -f examples/single_agent/scenario.yaml`.
   Currently the README's "single-agent" path is buried in the
   `prompt_injection` directory which also requires `ngrok` and an
   OpenAI key.
-- [ ] **`examples/fanout/`.** Three agents launched in parallel
+- [x] **`examples/fanout/`.** Three agents launched in parallel
   (different `allowed_hosts`), no dependencies between them. Shows the
   orchestrator running a fleet, not just a pipeline.
-- [ ] **`examples/code_exec/`.** Sandboxed agent with `allowed_bins:
+- [x] **`examples/code_exec/`.** Sandboxed agent with `allowed_bins:
   ["/usr/bin/python3"]` and `allowed_paths: ["/tmp/sandbox"]`, no
   network. Tests P1's exec hook from the orchestrator side.
 
 ### 3c — Tests that cover production paths
 
-- [ ] **End-to-end test against a real daemon.** Today every test uses
+- [x] **End-to-end test against a real daemon.** Today every test uses
   `FakeDaemon`. Add one test in `orchestrator/tests/` gated by an
   `AGENT_SANDBOX_E2E=1` env var that:
   1. Skips if not on Linux or the daemon binary isn't present.
@@ -204,7 +206,7 @@ This phase is about adoption: a dev should pick it up in 5 minutes.
      containing `EPERM`.
   This guards against the kind of integration drift that motivated the
   `997b726 refactor: unify into single Go module` work.
-- [ ] **CI: add a `python orchestrator tests` job** to
+- [x] **CI: add a `python orchestrator tests` job** to
   `.github/workflows/ci.yml`. Pin Python 3.11, run
   `pip install pyyaml websocket-client`, then
   `python -m unittest discover -s orchestrator/tests -v`. Currently the
@@ -216,26 +218,26 @@ This phase is about adoption: a dev should pick it up in 5 minutes.
 
 Stretch items. Not blocking adoption but expected of a mature tool.
 
-- [ ] **Reconnect on transient WS failure.** `EventStreamer` drops
+- [x] **Reconnect on transient WS failure.** `EventStreamer` drops
   events silently when the relay restarts. Add a small reconnect loop
   with capped backoff; buffer up to N events while disconnected.
-- [ ] **Backpressure.** `EventStreamer.emit` blocks on `ws.send`. A
+- [x] **Backpressure.** `EventStreamer.emit` blocks on `ws.send`. A
   slow viewer can pause an entire scenario. Move the send into a
   bounded queue + worker thread; drop oldest with a logged warning when
   the queue fills.
-- [ ] **Cancellation token in `wait_for`.** Today `Orchestrator.wait_for`
+- [x] **Cancellation token in `wait_for`.** Today `Orchestrator.wait_for`
   blocks forever if `timeout=None`. Accept a `threading.Event` so
   callers can cancel. (Improves the signal-handling story in 3a.)
-- [ ] **Per-agent log files.** Mirror `agentctl logs` behaviour:
+- [x] **Per-agent log files.** Mirror `agentctl logs` behaviour:
   write `~/.cache/agent-sandbox/orchestrator/<scenario_id>/<agent>.log`
   with every stdout/stderr line. Devs need this for post-mortems.
-- [ ] **Scenario-level retries.** Today only individual agent restarts
+- [x] **Scenario-level retries.** Today only individual agent restarts
   exist. Add scenario-level retry semantics (e.g. "if `research` fails
   and there's a retry budget, restart the whole scenario").
-- [ ] **Schema/JSON Schema for scenarios.** Publish a JSON Schema for
+- [x] **Schema/JSON Schema for scenarios.** Publish a JSON Schema for
   `scenario.yaml` so editors (VS Code YAML extension) can autocomplete
   and validate.
-- [ ] **`pyproject.toml` + console script.** Backlog. Promote
+- [x] **`pyproject.toml` + console script.** Backlog. Promote
   `python -m orchestrator` → `orchestrator` on PATH. Defer until the
   package contract is stable and you have at least 2 examples plus
   reconnect/backpressure done.
@@ -247,10 +249,10 @@ Stretch items. Not blocking adoption but expected of a mature tool.
 Things that make the *whole project* a real developer tool. Track them
 here because they affect P4's UX, but coordinate before doing them.
 
-- [ ] **One-command bootstrap.** `make demo` (or
+- [x] **One-command bootstrap.** `make demo` (or
   `scripts/quickstart.sh`) that starts daemon, viewer, and runs the
   two_agent scenario. Today the README has 7 steps across 3 terminals.
-- [ ] **Injection detection heuristics.** A small module that watches
+- [x] **Injection detection heuristics.** A small module that watches
   the stream for "ignore previous instructions"-class patterns in tool
   *results* (not user prompts) and emits
   `llm.injection_suspected` via `IngestEvent`. Cheap heuristic + a
@@ -258,12 +260,12 @@ here because they affect P4's UX, but coordinate before doing them.
 - [ ] **Scenario authoring UI.** P5's dashboard could grow a tab for
   "compose a manifest" with the JSON Schema from 4. Big lift; only
   worth it if the project gets traction.
-- [ ] **`docs/RECIPES.md`.** Common patterns: "agent with only LLM
+- [x] **`docs/RECIPES.md`.** Common patterns: "agent with only LLM
   network access", "agent with read-only `/etc`", "agent that can
   exec one subprocess", "two agents handing off via file", "fan-out
   with rate limit". This is the doc that turns curious readers into
   users.
-- [ ] **Deployment guide for self-hosted CI.** `docs/operations.md`
+- [x] **Deployment guide for self-hosted CI.** `docs/operations.md`
   covers systemd; extend it with how to drop an orchestrator scenario
   into a GitHub Actions runner so untrusted PRs run sandboxed.
 

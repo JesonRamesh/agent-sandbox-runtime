@@ -1,10 +1,23 @@
 name: writer-agent
-command: ["/usr/bin/python3", "/opt/agents/writer_agent.py"]
+command:
+  - python
+  - -c
+  - |
+    import tempfile
+    from pathlib import Path
+    handoff = Path(tempfile.gettempdir()) / "agent-handoff" / "research.txt"
+    output = Path(tempfile.gettempdir()) / "agent-handoff" / "final.txt"
+    notes = handoff.read_text(encoding="utf-8").strip()
+    output.write_text(
+        "Final summary\n"
+        "=============\n"
+        f"{notes}\n",
+        encoding="utf-8",
+    )
+    print(f"[AGENT] final output written to {output}")
 allowed_hosts: []
 allowed_paths:
-  - /opt/agents/
   - /tmp/agent-handoff/
-working_dir: /opt/agents
 env:
   PYTHONUNBUFFERED: "1"
 user: "65534"

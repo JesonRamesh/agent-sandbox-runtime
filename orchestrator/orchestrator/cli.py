@@ -5,9 +5,10 @@ import json
 import logging
 from pathlib import Path
 import sys
+from typing import Any
 
 from .core import Orchestrator
-from .daemon import SOCKET_PATH
+from .daemon import DaemonClient, SOCKET_PATH
 from .events import WS_URL_DEFAULT
 from .log import configure as configure_logger, logger
 from .manifest import ManifestError
@@ -83,6 +84,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="print validation result as JSON",
     )
 
+    status_parser = subparsers.add_parser(
+        "status",
+        help="list agents currently known to the sandbox daemon",
+    )
+    status_parser.add_argument(
+        "--daemon-socket",
+        default=SOCKET_PATH,
+        help="daemon Unix socket path",
+    )
+    status_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="print daemon agent status as JSON",
+    )
+
     return parser
 
 
@@ -102,6 +118,8 @@ def run(argv: list[str] | None = None) -> int:
             return _run_scenario(args)
         if args.command == "validate":
             return _validate_scenario(args)
+        if args.command == "status":
+            return _status(args)
     except (ScenarioError, ManifestError) as e:
         return _print_error(str(e), json_mode=getattr(args, "json", False))
     except Exception as e:  # pragma: no cover - final safety net for CLI UX
@@ -176,6 +194,7 @@ def _validate_scenario(args) -> int:
         "scenario_name": scenario.name,
         "description": scenario.description,
         "stagger_seconds": scenario.stagger_seconds,
+        "max_retries": scenario.max_retries,
         "agents": [
             {
                 "id": agent.id,
@@ -191,6 +210,28 @@ def _validate_scenario(args) -> int:
     return 0
 
 
+def _status(args) -> int:
+    daemon = DaemonClient(args.daemon_socket)
+    if not daemon.available:
+        return _print_error(
+            f"daemon socket '{args.daemon_socket}' is unavailable",
+            json_mode=args.json,
+        )
+
+    agents = daemon.list_agents()
+    payload = {
+        "ok": True,
+        "daemon_socket": args.daemon_socket,
+        "agent_count": len(agents),
+        "agents": agents,
+    }
+    if args.json:
+        _print_payload(payload, json_mode=True)
+    else:
+        _print_status_table(payload)
+    return 0
+
+
 def _validate_referenced_manifests(scenario):
     manifests = []
     for agent in scenario.agents:
@@ -201,6 +242,9 @@ def _validate_referenced_manifests(scenario):
 def _print_payload(payload: dict, *, json_mode: bool) -> None:
     if json_mode:
         print(json.dumps(payload, indent=2), flush=True)
+        return
+    if payload.get("ok") is True and "daemon_socket" in payload:
+        _print_status_table(payload)
         return
     if payload.get("status") == "running":
         print(
@@ -242,6 +286,48 @@ def _print_error(message: str, *, json_mode: bool) -> int:
     else:
         print(f"[error] {message}", file=sys.stderr, flush=True)
     return 2
+
+
+def _print_status_table(payload: dict[str, Any]) -> None:
+    agents = payload["agents"]
+    if not agents:
+        print(
+            f"[status] daemon '{payload['daemon_socket']}' has no tracked agents",
+            flush=True,
+        )
+        return
+
+    rows = [
+        (
+            str(agent.get("name", "")),
+            str(agent.get("agent_id", "")),
+            str(agent.get("status", "")),
+            str(agent.get("pid", "")),
+            str(agent.get("started_at", "")),
+        )
+        for agent in agents
+    ]
+    headers = ("NAME", "AGENT ID", "STATUS", "PID", "STARTED AT")
+    widths = [
+        max(len(header), *(len(row[index]) for row in rows))
+        for index, header in enumerate(headers)
+    ]
+
+    print(
+        f"[status] daemon '{payload['daemon_socket']}' tracking {payload['agent_count']} agent(s)",
+        flush=True,
+    )
+    print(
+        "  ".join(
+            header.ljust(widths[index]) for index, header in enumerate(headers)
+        ),
+        flush=True,
+    )
+    for row in rows:
+        print(
+            "  ".join(value.ljust(widths[index]) for index, value in enumerate(row)),
+            flush=True,
+        )
 
 
 def main() -> None:

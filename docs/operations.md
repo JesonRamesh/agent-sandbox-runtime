@@ -168,3 +168,36 @@ These are scoped out of v0 by design, not bugs:
 - **Hardcoded 2-second SIGTERM grace** during shutdown. Agents that don't handle SIGTERM are SIGKILL'd after 2 s.
 
 If you hit something not on this list, capture `journalctl -u agent-sandbox` output, the contents of `/sys/fs/cgroup/agent-sandbox/` and `/sys/fs/bpf/agent-sandbox/`, and file an issue.
+
+## 8. Self-Hosted CI Runner Pattern
+
+To run untrusted pull-request jobs inside the sandbox on a self-hosted
+GitHub Actions runner:
+
+1. Provision a Linux runner host that passes [`scripts/verify-host.sh`](../scripts/verify-host.sh).
+2. Install the daemon with `sudo deploy/install.sh` and confirm `systemctl status agent-sandbox`.
+3. Prebuild the repo once on the runner image (`make all`) so `bin/agentd`, `bin/agentctl`, and `bpf/*.bpf.o` are present.
+4. In the workflow job, validate the scenario first:
+   ```bash
+   python -m orchestrator validate -f orchestrator/examples/two_agent/scenario.yaml --json
+   ```
+5. Launch the scenario against the local daemon socket:
+   ```bash
+   python -m orchestrator run \
+     -f orchestrator/examples/two_agent/scenario.yaml \
+     --daemon-socket=/run/agent-sandbox.sock \
+     --summary-file scenario-summary.json \
+     --json
+   ```
+6. Upload `scenario-summary.json` plus any per-agent orchestrator logs from
+   `~/.cache/agent-sandbox/orchestrator/` as workflow artifacts.
+
+Practical notes:
+
+- Keep the daemon WebSocket on loopback (`127.0.0.1:7443`) and publish viewer
+  output only through explicit CI artifacts, not an internet-facing dashboard.
+- Use separate manifests per job type so a documentation bot, code-analysis
+  bot, and benchmark runner do not all inherit the same allow-list.
+- If the runner is ephemeral, clear `/tmp/agent-sandbox-demo.sock`,
+  `/sys/fs/cgroup/agent-sandbox/`, and `/sys/fs/bpf/agent-sandbox/` between
+  images rather than trying to adopt stale state.

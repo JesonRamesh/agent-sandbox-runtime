@@ -58,6 +58,10 @@ class DaemonClient:
         self._was_available_at_startup = self._probe()
         self._available = self._was_available_at_startup
 
+    @property
+    def available(self) -> bool:
+        return self._available
+
     def _probe(self) -> bool:
         if not hasattr(socket, "AF_UNIX"):
             return False

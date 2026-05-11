@@ -30,6 +30,7 @@ class Scenario:
     agents: tuple[ScenarioAgent, ...]
     stagger_seconds: float = 0.0
     description: str = ""
+    max_retries: int = 0
 
     @property
     def has_dependencies(self) -> bool:
@@ -60,6 +61,7 @@ def load_scenario(path: str | Path) -> Scenario:
     scenario_name = _parse_name(data.get("name"), scenario_path)
     description = _parse_description(data.get("description"), scenario_path)
     stagger_seconds = _parse_stagger_seconds(data.get("stagger_seconds", 0.0), scenario_path)
+    max_retries = _parse_max_retries(data.get("max_retries", 0), scenario_path)
     agents = _parse_agents(data.get("agents"), scenario_path)
     _validate_graph(agents, scenario_path)
 
@@ -68,6 +70,7 @@ def load_scenario(path: str | Path) -> Scenario:
         description=description,
         agents=tuple(agents),
         stagger_seconds=stagger_seconds,
+        max_retries=max_retries,
     )
 
 
@@ -91,6 +94,12 @@ def _parse_stagger_seconds(value, scenario_path: Path) -> float:
     if not isinstance(value, (int, float)) or value < 0:
         raise ScenarioError(f"scenario '{scenario_path}' has an invalid 'stagger_seconds'")
     return float(value)
+
+
+def _parse_max_retries(value, scenario_path: Path) -> int:
+    if not isinstance(value, int) or value < 0:
+        raise ScenarioError(f"scenario '{scenario_path}' has an invalid 'max_retries'")
+    return value
 
 
 def _parse_agents(value, scenario_path: Path) -> list[ScenarioAgent]:
