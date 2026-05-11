@@ -40,6 +40,12 @@ int BPF_PROG(asb_file_open, struct file *file, int ret)
     } *evt = bpf_ringbuf_reserve(&events, sizeof(*evt), 0);
     if (!evt)
         return 0;
+    // bpf_ringbuf_reserve hands back uninitialized memory from a previously
+    // used ringbuf slot. Fields we don't write below would otherwise leak
+    // those bytes to userspace via the ringbuf reader. Most acutely: if
+    // bpf_d_path fails we only set path[0] = 0, leaving path[1..MAX_PATH-1]
+    // as whatever was left from a prior event.
+    __builtin_memset(evt, 0, sizeof(*evt));
 
     long n = bpf_d_path(&file->f_path, evt->f.path, MAX_PATH);
     if (n < 0) {

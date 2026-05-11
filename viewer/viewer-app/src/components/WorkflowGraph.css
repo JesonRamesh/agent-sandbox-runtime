@@ -1,0 +1,384 @@
+/* ── Wrapper ─────────────────────────────────────────────────────────────── */
+.wf-wrapper {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-page);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Session summary bar ─────────────────────────────────────────────────── */
+.wf-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: var(--bg-panel);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.wf-summary__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-summary__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.wf-summary__value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.wf-summary__value--danger {
+  color: #ff4d5e;
+}
+
+.wf-summary__sep {
+  color: var(--border);
+  font-size: 12px;
+  user-select: none;
+}
+
+/* ReactFlow container fills remaining height */
+.wf-wrapper .react-flow {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+.wf-empty {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--mono);
+  color: var(--text-faint);
+}
+
+.wf-empty__icon {
+  font-size: 32px;
+  line-height: 1;
+  opacity: 0.7;
+}
+
+.wf-empty__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.wf-empty__sub {
+  font-size: 12px;
+}
+
+/* Hide extra handles — ReactFlow needs them for edges but they shouldn't show */
+.wf-wrapper .react-flow__handle[data-handlepos='right'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Darken ReactFlow's chrome to match theme */
+.wf-wrapper .react-flow__background { background: var(--bg-page); }
+.wf-wrapper .react-flow__controls button {
+  background: var(--panel-bg);
+  border-color: var(--border);
+  color: var(--text-dim);
+  fill: var(--text-dim);
+}
+.wf-wrapper .react-flow__controls button:hover { background: var(--panel-bg-hover); }
+.wf-wrapper .react-flow__edge-path { stroke-linecap: round; }
+
+/* ── EventNode card ──────────────────────────────────────────────────────── */
+.wf-card {
+  width: 100%;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Left-border colour by variant */
+.wf-card--user     { border-left-color: #5a647a; }
+.wf-card--tool     { border-left-color: #4a9eff; }
+.wf-card--tool-ok  { border-left-color: #3cd784; }
+.wf-card--tool-fail{ border-left-color: #ff4d5e; }
+.wf-card--agent    { border-left-color: #9b59ff; }
+.wf-card--default  { border-left-color: var(--border-strong); }
+
+/* Card header: icon + type label + step badge */
+.wf-card__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.wf-card__icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.wf-card__type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  flex: 1;
+}
+
+/* Step badge — right-aligned in header */
+.wf-card__step {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* Override type colour per variant */
+.wf-card--user    .wf-card__type { color: #8a96ad; }
+.wf-card--tool    .wf-card__type { color: #4a9eff; }
+.wf-card--tool-ok .wf-card__type { color: #3cd784; }
+.wf-card--tool-fail .wf-card__type { color: #ff4d5e; }
+.wf-card--agent   .wf-card__type { color: #c084fc; }
+
+/* Detail line */
+.wf-card__detail {
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.4;
+  word-break: break-all;
+}
+
+/* Status / outcome line */
+.wf-card__status {
+  font-size: 11px;
+  font-weight: 600;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.wf-card__status--ok      { color: #3cd784; }
+.wf-card__status--fail    { color: #ff4d5e; }
+.wf-card__status--pending { color: var(--text-faint); font-style: italic; }
+
+/* ── CircleNode ──────────────────────────────────────────────────────────── */
+.wf-circle {
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-family: var(--mono);
+  text-align: center;
+  border: 2px solid;
+}
+
+.wf-circle--start    { background: #0d1f15; border-color: #3cd784; }
+.wf-circle--complete { background: #0d1f15; border-color: #3cd784; }
+.wf-circle--crashed  { background: #1f0d0d; border-color: #ff4d5e; }
+
+.wf-circle__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.wf-circle--start .wf-circle__icon    { color: #3cd784; }
+.wf-circle--complete .wf-circle__icon { color: #3cd784; }
+.wf-circle--crashed .wf-circle__icon  { color: #ff4d5e; }
+
+.wf-circle__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.wf-circle--start .wf-circle__label    { color: #3cd784; }
+.wf-circle--complete .wf-circle__label { color: #3cd784; }
+.wf-circle--crashed .wf-circle__label  { color: #ff4d5e; }
+
+.wf-circle__sub {
+  font-size: 9px;
+  color: var(--text-faint);
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── KernelNode card ─────────────────────────────────────────────────────── */
+.wf-kernel {
+  width: 220px;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.wf-kernel--allowed {
+  background: rgba(60, 215, 132, 0.06);
+  border: 1px solid #3cd784;
+  border-left: 3px solid #3cd784;
+}
+
+.wf-kernel--blocked {
+  background: rgba(255, 77, 94, 0.10);
+  border: 1px solid #ff4d5e;
+  border-left: 4px solid #ff4d5e;
+  animation: kernel-pulse 2s ease-in-out infinite;
+}
+
+@keyframes kernel-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 77, 94, 0); }
+  50%       { box-shadow: 0 0 0 5px rgba(255, 77, 94, 0.18); }
+}
+
+.wf-kernel__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wf-kernel__icon {
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.wf-kernel--allowed .wf-kernel__icon { color: #3cd784; }
+.wf-kernel--blocked .wf-kernel__icon { color: #ff4d5e; }
+
+.wf-kernel__type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.wf-kernel--allowed .wf-kernel__type { color: #3cd784; }
+.wf-kernel--blocked .wf-kernel__type { color: #ff4d5e; }
+
+.wf-kernel__host {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.wf-kernel__reason {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ── Follow button ────────────────────────────────────────────────────────── */
+.wf-follow-btn {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent-blue, #4a9eff);
+  border: none;
+  border-radius: 16px;
+  padding: 8px 18px;
+  cursor: pointer;
+  box-shadow: 0 2px 12px rgba(74, 158, 255, 0.3);
+  transition: background 150ms, transform 150ms;
+}
+
+.wf-follow-btn:hover {
+  background: #3a8eef;
+  transform: translateX(-50%) scale(1.05);
+}
+
+/* ── Annotation badges ────────────────────────────────────────────────────── */
+.wf-annotation {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.wf-annotation--danger {
+  background: rgba(255, 77, 94, 0.15);
+  border: 1px solid rgba(255, 77, 94, 0.5);
+  color: #ff6b7a;
+  animation: annotation-pulse 2s ease-in-out infinite;
+}
+
+.wf-annotation--safe {
+  background: rgba(60, 215, 132, 0.08);
+  border: 1px solid rgba(60, 215, 132, 0.3);
+  color: #3cd784;
+}
+
+.wf-annotation__icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.wf-annotation__text {
+  line-height: 1;
+}
+
+@keyframes annotation-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.85; transform: scale(1.03); }
+}
+
+/* ── Danger node glow (applied via className on blocked tool_call nodes) ──── */
+.wf-node--danger .wf-card {
+  border-color: rgba(255, 77, 94, 0.6);
+  border-left-width: 4px;
+  border-left-color: #ff4d5e;
+  box-shadow: 0 0 12px rgba(255, 77, 94, 0.25), 0 0 4px rgba(255, 77, 94, 0.15);
+  animation: danger-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes danger-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(255, 77, 94, 0.25), 0 0 4px rgba(255, 77, 94, 0.15); }
+  50%      { box-shadow: 0 0 20px rgba(255, 77, 94, 0.4), 0 0 8px rgba(255, 77, 94, 0.25); }
+}
+
+/* Tab bar styles live in App.css — removed from here to avoid conflicts */

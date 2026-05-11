@@ -142,6 +142,26 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// writeOK / writeErr wrap the package-level WriteOK/WriteErr so a write
+// failure is logged with method+remote context instead of being silently
+// dropped. Without this, a daemon that successfully ran an agent but
+// failed to send the response (peer disconnect, broken pipe) leaves no
+// audit trail of the desync — and any client retry produces an orphan.
+func (s *Server) writeOK(c net.Conn, logger *slog.Logger, result any) {
+	if err := WriteOK(c, result); err != nil {
+		logger.Warn("write OK response failed; client likely disconnected mid-RPC",
+			slog.String("err", err.Error()))
+	}
+}
+
+func (s *Server) writeErr(c net.Conn, logger *slog.Logger, code, message string) {
+	if err := WriteErr(c, code, message); err != nil {
+		logger.Warn("write error response failed; client likely disconnected mid-RPC",
+			slog.String("err", err.Error()),
+			slog.String("response_code", code))
+	}
+}
+
 // handleConn reads one request frame, dispatches, writes the appropriate
 // response(s), and closes. StreamEvents is the only persistent method.
 func (s *Server) handleConn(ctx context.Context, c net.Conn) {
@@ -179,18 +199,18 @@ func (s *Server) handleConn(ctx context.Context, c net.Conn) {
 		s.handleDaemonStatus(reqCtx, c, logger)
 	default:
 		logger.Warn("unknown method")
-		_ = WriteErr(c, ErrInternal, fmt.Sprintf("unknown method %q", req.Method))
+		s.writeErr(c, logger, ErrInternal, fmt.Sprintf("unknown method %q", req.Method))
 	}
 }
 
 func (s *Server) handleRunAgent(ctx context.Context, c net.Conn, req Request, logger *slog.Logger) {
 	var p RunAgentParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
-		_ = WriteErr(c, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
+		s.writeErr(c, logger, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
 		return
 	}
 	if err := p.Manifest.Validate(); err != nil {
-		_ = WriteErr(c, ErrInvalidManifest, err.Error())
+		s.writeErr(c, logger, ErrInvalidManifest, err.Error())
 		return
 	}
 	logger = logger.With(slog.String("phase", "run"), slog.String("agent_name", p.Manifest.Name))
@@ -199,27 +219,27 @@ func (s *Server) handleRunAgent(ctx context.Context, c net.Conn, req Request, lo
 	if err != nil {
 		code := CodeForError(err)
 		logger.Error("RunAgent failed", slog.String("code", code), slog.String("err", err.Error()))
-		_ = WriteErr(c, code, err.Error())
+		s.writeErr(c, logger, code, err.Error())
 		return
 	}
-	_ = WriteOK(c, RunAgentResult{AgentID: id})
+	s.writeOK(c, logger.With(slog.String("agent_id", id)), RunAgentResult{AgentID: id})
 }
 
 func (s *Server) handleStopAgent(ctx context.Context, c net.Conn, req Request, logger *slog.Logger) {
 	var p StopAgentParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
-		_ = WriteErr(c, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
+		s.writeErr(c, logger, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
 		return
 	}
 	logger = logger.With(slog.String("agent_id", p.AgentID), slog.String("phase", "stop"))
 	if err := s.handler.StopAgent(ctx, p.AgentID); err != nil {
 		code := CodeForError(err)
 		logger.Error("StopAgent failed", slog.String("code", code), slog.String("err", err.Error()))
-		_ = WriteErr(c, code, err.Error())
+		s.writeErr(c, logger, code, err.Error())
 		return
 	}
 	// Inner OK true matches proto.md; idempotent semantics live in the handler.
-	_ = WriteOK(c, StopAgentResult{OK: true})
+	s.writeOK(c, logger, StopAgentResult{OK: true})
 }
 
 func (s *Server) handleListAgents(ctx context.Context, c net.Conn, logger *slog.Logger) {
@@ -227,20 +247,20 @@ func (s *Server) handleListAgents(ctx context.Context, c net.Conn, logger *slog.
 	if err != nil {
 		code := CodeForError(err)
 		logger.Error("ListAgents failed", slog.String("code", code), slog.String("err", err.Error()))
-		_ = WriteErr(c, code, err.Error())
+		s.writeErr(c, logger, code, err.Error())
 		return
 	}
 	if agents == nil {
 		// JSON null vs [] matters to clients iterating the list.
 		agents = []AgentSummary{}
 	}
-	_ = WriteOK(c, ListAgentsResult{Agents: agents})
+	s.writeOK(c, logger, ListAgentsResult{Agents: agents})
 }
 
 func (s *Server) handleAgentLogs(ctx context.Context, c net.Conn, req Request, logger *slog.Logger) {
 	var p AgentLogsParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
-		_ = WriteErr(c, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
+		s.writeErr(c, logger, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
 		return
 	}
 	logger = logger.With(slog.String("agent_id", p.AgentID))
@@ -248,13 +268,13 @@ func (s *Server) handleAgentLogs(ctx context.Context, c net.Conn, req Request, l
 	if err != nil {
 		code := CodeForError(err)
 		logger.Error("AgentLogs failed", slog.String("code", code), slog.String("err", err.Error()))
-		_ = WriteErr(c, code, err.Error())
+		s.writeErr(c, logger, code, err.Error())
 		return
 	}
 	if lines == nil {
 		lines = []Event{}
 	}
-	_ = WriteOK(c, AgentLogsResult{Lines: lines})
+	s.writeOK(c, logger, AgentLogsResult{Lines: lines})
 }
 
 func (s *Server) handleStreamEvents(ctx context.Context, c net.Conn, req Request, logger *slog.Logger) {
@@ -262,7 +282,7 @@ func (s *Server) handleStreamEvents(ctx context.Context, c net.Conn, req Request
 	// Empty params is allowed (subscribe-all). Only fail on malformed JSON.
 	if len(req.Params) > 0 {
 		if err := json.Unmarshal(req.Params, &p); err != nil {
-			_ = WriteErr(c, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
+			s.writeErr(c, logger, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
 			return
 		}
 	}
@@ -270,7 +290,9 @@ func (s *Server) handleStreamEvents(ctx context.Context, c net.Conn, req Request
 	logger.Info("starting event stream")
 
 	// sink wraps WriteOK so each event becomes one frame. A write error
-	// (peer disconnect) propagates up and ends the stream.
+	// (peer disconnect) propagates up and ends the stream — DON'T route
+	// this through writeOK because the stream loop expects the error and
+	// uses it as the unsubscribe signal.
 	sink := func(e Event) error {
 		return WriteOK(c, e)
 	}
@@ -317,8 +339,8 @@ func (s *Server) handleDaemonStatus(ctx context.Context, c net.Conn, logger *slo
 	if err != nil {
 		code := CodeForError(err)
 		logger.Error("DaemonStatus failed", slog.String("code", code), slog.String("err", err.Error()))
-		_ = WriteErr(c, code, err.Error())
+		s.writeErr(c, logger, code, err.Error())
 		return
 	}
-	_ = WriteOK(c, res)
+	s.writeOK(c, logger, res)
 }

@@ -66,7 +66,9 @@ var summarisers = map[string]summariser{
 
 // llm.stdout {"line": "...."} → quoted line
 func llmStdout(raw json.RawMessage) (string, bool) {
-	var d struct{ Line string `json:"line"` }
+	var d struct {
+		Line string `json:"line"`
+	}
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return "", false
 	}
@@ -137,7 +139,9 @@ func kernelConnectBlocked(raw json.RawMessage) (string, bool) {
 
 // agent.stdout / agent.stderr {"line": "..."} → quoted line
 func agentStdout(raw json.RawMessage) (string, bool) {
-	var d struct{ Line string `json:"line"` }
+	var d struct {
+		Line string `json:"line"`
+	}
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return "", false
 	}
@@ -158,7 +162,9 @@ func lifecycleSpawned(raw json.RawMessage) (string, bool) {
 
 // lifecycle.exit {"exit_code": N} → exit=N
 func lifecycleExit(raw json.RawMessage) (string, bool) {
-	var d struct{ ExitCode int `json:"exit_code"` }
+	var d struct {
+		ExitCode int `json:"exit_code"`
+	}
 	if err := json.Unmarshal(raw, &d); err != nil {
 		return "", false
 	}

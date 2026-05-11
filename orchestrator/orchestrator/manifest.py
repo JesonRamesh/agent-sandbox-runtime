@@ -5,7 +5,11 @@ import yaml
 
 
 class ManifestError(Exception):
-    """Raised for user-facing manifest load failures."""
+    """Raised for any manifest-load failure: missing file, bad YAML, missing
+    required field. Wrapping these in a project-defined exception lets callers
+    tell "user gave us a bad manifest" apart from a real bug, and produces a
+    one-line error instead of a Python traceback that points at yaml internals.
+    """
 
 
 def _format_yaml_location(path: str | Path, exc: yaml.YAMLError) -> str:
@@ -38,6 +42,9 @@ _REQUIRED = ("name", "command", "allowed_hosts", "allowed_paths")
 
 
 def load_manifest(path: str | Path) -> AgentManifest:
+    # encoding="utf-8" is explicit because the runtime's default is locale-
+    # dependent — a CI host with LANG=C falls back to ASCII and crashes on
+    # any non-ASCII byte in the manifest.
     try:
         with open(path, encoding="utf-8") as f:
             data = yaml.safe_load(f)

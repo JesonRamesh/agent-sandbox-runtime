@@ -28,15 +28,18 @@ import (
 	"github.com/agent-sandbox/runtime/internal/testutil"
 )
 
-// TestMain forwards to testscript.RunMain so the test binary doubles as the
+// TestMain forwards to testscript.Main so the test binary doubles as the
 // `agentctl` executable when invoked from a script. Note: we deliberately do
 // NOT call flag.Parse() here — testscript hands the script's argv straight to
 // the registered Main, and a stray flag.Parse() would barf on cobra flags
 // like --json that the standard library knows nothing about.
+//
+// testscript.Main always calls os.Exit, so the wrapper does not return.
+// Each registered command is responsible for its own os.Exit.
 func TestMain(m *testing.M) {
-	os.Exit(testscript.RunMain(m, map[string]func() int{
-		"agentctl": app.Main,
-	}))
+	testscript.Main(m, map[string]func(){
+		"agentctl": func() { os.Exit(app.Main()) },
+	})
 }
 
 func TestScripts(t *testing.T) {
@@ -310,8 +313,8 @@ type scriptTesting struct{}
 
 func newScriptTesting() *scriptTesting { return &scriptTesting{} }
 
-func (s *scriptTesting) Helper()                                {}
-func (s *scriptTesting) Fatalf(format string, args ...any)      { panic(fmt.Sprintf(format, args...)) }
-func (s *scriptTesting) Errorf(format string, args ...any)      { panic(fmt.Sprintf(format, args...)) }
-func (s *scriptTesting) Cleanup(fn func())                      { /* tests handle stop manually */ }
-func (s *scriptTesting) TempDir() string                        { return os.TempDir() }
+func (s *scriptTesting) Helper()                           {}
+func (s *scriptTesting) Fatalf(format string, args ...any) { panic(fmt.Sprintf(format, args...)) }
+func (s *scriptTesting) Errorf(format string, args ...any) { panic(fmt.Sprintf(format, args...)) }
+func (s *scriptTesting) Cleanup(fn func())                 { /* tests handle stop manually */ }
+func (s *scriptTesting) TempDir() string                   { return os.TempDir() }

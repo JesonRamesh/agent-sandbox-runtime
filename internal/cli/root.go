@@ -16,6 +16,11 @@ import (
 	"github.com/agent-sandbox/runtime/internal/client"
 )
 
+// dialTimeout is the single CLI-side default for socket dials. We use the
+// client package's exported value so tweaking it for a slow CI environment
+// only requires editing one place.
+var dialTimeout = client.DefaultDialTimeout
+
 // Build is overridden at link time via -ldflags="-X .../internal/cli.Build=...".
 var Build = "dev"
 
@@ -45,7 +50,7 @@ func appRuntimeFrom(ctx context.Context) *appRuntime {
 		return rt
 	}
 	// Fallback for direct subcommand invocations in tests.
-	return &appRuntime{Stdout: os.Stdout, Stderr: os.Stderr, DialTimeout: 5 * time.Second}
+	return &appRuntime{Stdout: os.Stdout, Stderr: os.Stderr, DialTimeout: dialTimeout}
 }
 
 // newClient builds a client.Client from the appRuntime, resolving the socket
@@ -63,7 +68,7 @@ func NewRoot() *cobra.Command {
 	rt := &appRuntime{
 		Stdout:      os.Stdout,
 		Stderr:      os.Stderr,
-		DialTimeout: 5 * time.Second,
+		DialTimeout: dialTimeout,
 	}
 	cmd := &cobra.Command{
 		Use:           "agentctl",

@@ -10,14 +10,14 @@ import (
 
 // Exit codes (DEC-009).
 const (
-	ExitOK                  = 0
-	ExitGenericError        = 1
-	ExitUsageError          = 2
-	ExitManifestInvalid     = 3
-	ExitDaemonUnreachable   = 4
-	ExitDaemonError         = 5
-	ExitAgentNotFound       = 6
-	ExitInterrupted         = 130
+	ExitOK                = 0
+	ExitGenericError      = 1
+	ExitUsageError        = 2
+	ExitManifestInvalid   = 3
+	ExitDaemonUnreachable = 4
+	ExitDaemonError       = 5
+	ExitAgentNotFound     = 6
+	ExitInterrupted       = 130
 )
 
 // printedErr wraps an error that has already been rendered to stderr/stdout.

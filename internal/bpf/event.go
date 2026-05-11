@@ -103,11 +103,11 @@ type rawHeader struct {
 
 // rawNet mirrors `struct net_event`.
 type rawNet struct {
-	Family   uint32
-	Dport    uint16
-	Pad      uint16
-	DaddrV4  uint32
-	DaddrV6  [16]byte
+	Family  uint32
+	Dport   uint16
+	Pad     uint16
+	DaddrV4 uint32
+	DaddrV6 [16]byte
 }
 
 // rawFile mirrors `struct file_event`.

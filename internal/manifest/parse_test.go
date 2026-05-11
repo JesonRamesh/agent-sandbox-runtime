@@ -135,6 +135,62 @@ allowed_paths: []
 	}
 }
 
+// working_dir must reject traversal so the daemon can't be tricked into
+// MkdirAll-ing into /etc, /sys, etc. via a normalized-but-misleading path.
+// Each case is the YAML source for the working_dir scalar (so we can control
+// whether YAML's quoted-string escape decoder fires); the literal `\n`
+// becomes an LF only after YAML unescapes the double-quoted form.
+func TestParse_RejectsWorkingDirTraversal(t *testing.T) {
+	cases := []struct {
+		name        string
+		yamlValue   string // appears verbatim after `working_dir: ` in the manifest
+		description string
+	}{
+		{"traversal-into-etc", `"/tmp/agent/../../etc/foo"`, "embedded .."},
+		{"trailing-dotdot", `"/tmp/foo/.."`, "trailing /.."},
+		{"system-etc", `"/etc/agent"`, "sensitive prefix /etc"},
+		{"system-proc", `"/proc/1/agent"`, "sensitive prefix /proc"},
+		{"system-sys", `"/sys/kernel/agent"`, "sensitive prefix /sys"},
+		{"relative", `"relative/path"`, "not absolute"},
+		// `\n` in a YAML double-quoted scalar decodes to a literal LF byte
+		// — the form a hostile manifest would use to smuggle a newline
+		// past a naive prefix check.
+		{"embedded-newline", `"/tmp/agent\nfoo"`, "control character in path"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(`name: traversal
+command: ["/bin/true"]
+allowed_hosts: []
+allowed_paths: []
+working_dir: ` + tc.yamlValue + "\n")
+			_, err := parseAndValidate("inline.yaml", data, fakeEnv(nil))
+			if err == nil {
+				t.Fatalf("expected rejection (%s) for working_dir=%s", tc.description, tc.yamlValue)
+			}
+		})
+	}
+}
+
+// envVarRe must match envKeyRe; lowercase env-var references in values
+// were silently passing through unexpanded (C4 in the audit).
+func TestParse_LowercaseEnvVarSubstitution(t *testing.T) {
+	data := []byte(`name: env-lower
+command: ["/bin/sh", "-c", "echo $X"]
+allowed_hosts: []
+allowed_paths: []
+env:
+  API_KEY: "${lower_var}"
+`)
+	m, err := parseAndValidate("inline.yaml", data, fakeEnv(map[string]string{"lower_var": "secret"}))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := m.Env["API_KEY"]; got != "secret" {
+		t.Errorf("API_KEY = %q, want %q (substitution should accept lowercase)", got, "secret")
+	}
+}
+
 func TestParse_UnsetEnvVar(t *testing.T) {
 	data := []byte(`name: env-bad
 command: ["/bin/sh", "-c", "echo $X"]

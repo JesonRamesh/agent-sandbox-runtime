@@ -81,7 +81,14 @@ class DaemonClient:
 
     @staticmethod
     def _recv_exact(sock: socket.socket, n: int) -> bytes:
-        """Read exactly n bytes or raise ConnectionError on early EOF."""
+        """Read exactly n bytes or raise ConnectionError on early EOF.
+
+        socket.recv() may return fewer bytes than requested even on a
+        well-behaved peer — TCP/Unix sockets only guarantee byte ordering,
+        not message boundaries. The frame protocol is length-prefixed, so
+        a single short recv corrupts every subsequent message; loop until
+        we have everything.
+        """
         buf = bytearray()
         while len(buf) < n:
             chunk = sock.recv(n - len(buf))
@@ -115,8 +122,13 @@ class DaemonClient:
                 )
             return resp
         except (OSError, ConnectionError, struct.error, json.JSONDecodeError) as e:
-            # A failed RPC after the daemon was previously reachable means
-            # it has crashed or been restarted. Mark unavailable so the
+            # Catch struct.error / JSONDecodeError here too: without them in
+            # the list, the outer caller used to see a Python traceback on a
+            # short read and the socket FD leaked. Now: log, return None,
+            # close via the finally clause.
+            #
+            # A failed RPC after the daemon was previously reachable means it
+            # has crashed or been restarted. Mark unavailable so the
             # orchestrator can detect the drop via .disappeared rather than
             # silently degrading new launches to local (unsandboxed) mode.
             if self._available and isinstance(e, (OSError, ConnectionError)):

@@ -1,0 +1,179 @@
+/* ── Event Cards — replace scrolling rows in LLMPanel + KernelPanel ──────── */
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 12px 9px 14px;
+  border-left: 2px solid var(--border-active);
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: transparent;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+  cursor: default;
+  /* No transform animation — prevents layout shift that resets scroll */
+  animation: card-fade-in 200ms ease both;
+}
+
+.event-card--newest {
+  animation: card-fade-in 250ms ease both;
+}
+
+@keyframes card-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Top row: label left, timestamp right */
+.event-card__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.event-card__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-card__time {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.event-card__detail {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── LLM type colours ────────────────────────────────────────────────────── */
+
+.event-card.type-session_start {
+  border-left-color: var(--accent-purple);
+  background: rgba(139, 92, 246, 0.04);
+}
+.event-card.type-user_input {
+  border-left-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.04);
+}
+.event-card.type-tool_call {
+  border-left-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.04);
+}
+.event-card.type-tool_result {
+  border-left-color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.04);
+}
+.event-card.type-agent_output {
+  border-left-color: var(--accent-purple);
+  background: rgba(139, 92, 246, 0.04);
+}
+.event-card.type-stdout {
+  border-left-color: var(--border-subtle);
+  background: transparent;
+}
+.event-card.type-stopped {
+  border-left-color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.04);
+}
+.event-card.type-crashed {
+  border-left-color: var(--accent-crimson);
+  background: rgba(239, 68, 68, 0.06);
+}
+
+/* ── Kernel type colours ─────────────────────────────────────────────────── */
+
+.event-card.type-connect_attempt {
+  border-left-color: var(--border-active);
+  background: transparent;
+}
+.event-card.type-connect_allowed {
+  border-left-color: var(--accent-emerald);
+  background: rgba(16, 185, 129, 0.04);
+}
+.event-card.type-connect_blocked {
+  border-left-width: 3px;
+  border-left-color: var(--accent-crimson);
+  background: rgba(239, 68, 68, 0.08);
+  animation: card-in 280ms cubic-bezier(0.34,1.56,0.64,1) both, bgflash-card 1.8s ease-out 1;
+}
+.event-card.type-connect_blocked .event-card__label {
+  color: var(--accent-crimson);
+  font-weight: 700;
+}
+
+/* ── Injection target ────────────────────────────────────────────────────── */
+
+.event-card.is-injection-target {
+  border-left-width: 3px;
+  border-left-color: var(--accent-crimson) !important;
+  background: rgba(239, 68, 68, 0.08);
+}
+.event-card.is-injection-target .event-card__label {
+  color: var(--accent-crimson);
+  font-weight: 700;
+}
+
+/* ── Hover glows ─────────────────────────────────────────────────────────── */
+
+.event-card.type-session_start:hover  { background: rgba(139, 92, 246, 0.14); box-shadow: inset 3px 0 16px rgba(139,92,246,0.18); }
+.event-card.type-user_input:hover     { background: rgba(59, 130, 246, 0.14); box-shadow: inset 3px 0 16px rgba(59,130,246,0.18); }
+.event-card.type-tool_call:hover      { background: rgba(59, 130, 246, 0.14); box-shadow: inset 3px 0 16px rgba(59,130,246,0.18); }
+.event-card.type-tool_result:hover    { background: rgba(16, 185, 129, 0.14); box-shadow: inset 3px 0 16px rgba(16,185,129,0.18); }
+.event-card.type-agent_output:hover   { background: rgba(139, 92, 246, 0.14); box-shadow: inset 3px 0 16px rgba(139,92,246,0.18); }
+.event-card.type-stopped:hover        { background: rgba(16, 185, 129, 0.14); box-shadow: inset 3px 0 16px rgba(16,185,129,0.18); }
+.event-card.type-crashed:hover        { background: rgba(239, 68, 68, 0.16);  box-shadow: inset 3px 0 16px rgba(239,68,68,0.22); }
+.event-card.type-connect_attempt:hover { background: rgba(42, 53, 80, 0.30);  box-shadow: inset 3px 0 16px rgba(42,53,80,0.3); }
+.event-card.type-connect_allowed:hover { background: rgba(16, 185, 129, 0.14); box-shadow: inset 3px 0 16px rgba(16,185,129,0.18); }
+.event-card.type-connect_blocked:hover { background: rgba(239, 68, 68, 0.18);  box-shadow: inset 3px 0 16px rgba(239,68,68,0.28); }
+.event-card.is-injection-target:hover  { background: rgba(239, 68, 68, 0.18);  box-shadow: inset 3px 0 16px rgba(239,68,68,0.28); }
+
+/* Hover label colours */
+.event-card.type-session_start:hover .event-card__label { color: var(--accent-purple); }
+.event-card.type-user_input:hover    .event-card__label { color: var(--accent-blue); }
+.event-card.type-tool_call:hover     .event-card__label { color: var(--accent-blue); }
+.event-card.type-tool_result:hover   .event-card__label { color: var(--accent-emerald); }
+.event-card.type-agent_output:hover  .event-card__label { color: var(--accent-purple); }
+.event-card.type-stopped:hover       .event-card__label { color: var(--accent-emerald); }
+.event-card.type-crashed:hover       .event-card__label { color: var(--accent-crimson); }
+.event-card.type-connect_allowed:hover .event-card__label { color: var(--accent-emerald); }
+.event-card.type-connect_blocked:hover .event-card__label { color: var(--accent-crimson); }
+
+/* ── Flash animation for new blocked card ────────────────────────────────── */
+
+@keyframes bgflash-card {
+  0%   { background-color: rgba(239, 68, 68, 0.45); }
+  20%  { background-color: rgba(239, 68, 68, 0.45); }
+  100% { background-color: rgba(239, 68, 68, 0.08); }
+}
+
+/* ── Show-all button in panel header ─────────────────────────────────────── */
+
+.panel__showall {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--bg-panel-hover);
+  border: 0.5px solid var(--border-active);
+  border-radius: 4px;
+  padding: 2px 7px;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease;
+}
+
+.panel__showall:hover {
+  color: var(--accent-blue);
+  border-color: var(--accent-blue);
+}
