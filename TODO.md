@@ -39,82 +39,77 @@
 
 ---
 
-## Phase 0 — Catch up with main (do this first, ~half a day)
+## Status snapshot (last updated after the merge session)
 
-The orchestrator code on `arzaan1` won't merge cleanly into a stale base.
-Sync first, fix the breakage, then ship.
-
-- [ ] **Back up the branch** before doing anything destructive:
-  `git branch arzaan1-backup`
-- [ ] **Merge `main` into `arzaan1`**:
-  `git fetch origin && git merge origin/main`
-- [ ] **Resolve conflicts**, keeping these specific things from each side:
-  - `cmd/agentd/main_linux.go` — **keep `main`'s** elaborate cleanup
-    (`cleanupMu`, per-step retry bools, the `done` channel, 8-byte
-    `agentIDBytes`). **Re-apply on top of it**: the `streamAgentOutput`
-    function, the `stdoutPipe`/`stderrPipe` captures, the two
-    `go d.streamAgentOutput(...)` goroutines, and the
-    `maxAgentOutputChunkBytes` constant. These are the orchestrator's
-    daemon-mode contract.
-  - `internal/ipc/protocol.go` — **keep `main`'s** `validateWorkingDir` and
-    the `PERMISSION_DENIED` error code/var. They're security hardening, not
-    orchestrator territory.
-  - `orchestrator/**` — **keep `arzaan1`'s** version verbatim. `main` only
-    has the original P4 import; you've rewritten the package.
-  - `.github/workflows/ci.yml` — **keep `main`'s** version. The `daemon/`
-    subdir job on `arzaan1` is leftover from before the Go-module
-    unification and is broken.
-  - `viewer/**` — **keep `main`'s** version. P5's v2 rewrite supersedes
-    everything on your branch.
-- [ ] **Build and test locally** before pushing:
-  - `make all` (Go side)
-  - `cd orchestrator && python -m unittest discover -s tests -v`
-  - `python -m orchestrator validate -f examples/two_agent/scenario.yaml`
-- [ ] **Force-push** the merged branch: `git push origin arzaan1`.
-  Coordinate with anyone else who has it checked out.
-
-**Done when:** `make all` is green, P4 tests pass, the CI workflow on the
-pushed branch passes, and `git log main..arzaan1 -- orchestrator/` still
-shows your orchestrator commits.
+- `arzaan1` is **merged with `main`** at commit `8db9890` and pushed.
+- Backup branch `arzaan1-backup` (local-only) points at the pre-merge
+  commit `a5b6ef0` — safety net if the merge ever needs to be unwound.
+- 16/16 orchestrator unit tests pass:
+  `cd orchestrator && python -m unittest discover -s tests`.
+- Phases 0 and 1 are **done**. Most of Phase 3a is **done**. Phases 2,
+  3a-remainder, 3b, 3c, 4, 5 are pending.
 
 ---
 
-## Phase 1 — Close the daemon-mode gaps (before the PR)
+## ✅ Phase 0 — Catch up with main (DONE — commits a5f9f3b, 8db9890)
 
-Your README still says "integrated daemon `IngestEvent` support" and
-"guaranteed `agent.stdout` / `agent.stderr` event emission" are blocked
-outside P4. The first is actually wired up in `internal/ipc/protocol.go`
-and documented in `docs/INTERFACES.md` §3.6; the second is the patch
-sitting on your branch. Make both work end-to-end and add tests.
+The orchestrator code on `arzaan1` was on a stale base and the CI was
+broken. Resolved by merging `main` in. What landed:
 
-- [ ] **Verify `agent.stdout`/`agent.stderr` flows.** With a daemon
-  running, launch an agent via the orchestrator in daemon mode, and
-  confirm the orchestrator's `[<name>] <line>` mirror appears for every
-  line the agent prints. Check `orchestrator/orchestrator/process.py:259`
-  (`_handle_daemon_event`) actually receives the events.
-- [ ] **Verify `IngestEvent`.** Add a method
-  `Orchestrator.report_llm_event(agent_id, event_type, details)` that
-  calls `DaemonClient.ingest_event` and confirm the daemon fans the
-  event out on `ws://127.0.0.1:7443/events` (subscribe with a small
-  Python script using `websockets`).
-- [ ] **Wire `IngestEvent` into the agent stdout parser.** When the
-  orchestrator sees a `[TOOL]` or `[RESULT]` line in daemon mode, push
-  it as an `llm.tool_call` / `llm.tool_result` via `IngestEvent` so the
-  dashboard sees one unified stream keyed by `agent_id`. Today these
-  only go out via the direct WebSocket to P5's relay — daemon-mode
-  subscribers miss them.
-- [ ] **Test.** Extend `orchestrator/tests/test_orchestrator.py`:
-  - A new `AgentProcessDaemonModeTests` case that feeds an
-    `agent.stdout` event with a `[TOOL]` line and asserts the
-    streamer recorded a `tool_call` event.
-  - A `DaemonClientTests` case that exercises the `IngestEvent`
-    happy path against a fake socket server.
-- [ ] **Update `orchestrator/README.md`.** Drop the "Daemon mode status"
-  caveats once the gaps are closed.
+- [x] Backup branch `arzaan1-backup` created (local, not pushed).
+- [x] `git merge origin/main` resolved with two manual conflicts and
+      ~67 auto-merged files.
+- [x] `cmd/agentd/main_linux.go` blended cleanly: kept `main`'s
+      `cleanupMu` + 8-byte `agentIDBytes` + per-step retry; preserved
+      this branch's `streamAgentOutput` + `stdoutPipe`/`stderrPipe`
+      goroutines + `maxAgentOutputChunkBytes`.
+- [x] `internal/ipc/protocol.go` adopted `main`'s `validateWorkingDir`
+      traversal guard and `PERMISSION_DENIED` error code/var.
+- [x] `orchestrator/orchestrator/daemon.py`: kept this branch's
+      `disappeared` property + logger-based RPC failure path; adopted
+      `main`'s enriched docstrings on `_recv_exact` and the `_rpc`
+      `except` block.
+- [x] `orchestrator/orchestrator/manifest.py`: kept this branch's
+      `_format_yaml_location` + `path:line:col` errors; adopted
+      `main`'s longer `ManifestError` docstring and the utf-8 comment.
+- [x] `viewer/**` taken wholesale from `main` (v2 dashboard).
+- [x] `.github/workflows/ci.yml` taken from `main` (the `daemon/`
+      subdir job on this branch was broken post-unification).
+- [x] Force-pushed to `origin/arzaan1` with `--force-with-lease`.
 
-**Done when:** the prompt-injection demo runs end-to-end in daemon mode
-(daemon enforces, dashboard shows both the model's tool call and the
-kernel's deny, correlated by `agent_id`), and the new tests pass.
+If a future session ever needs to redo this: `git reset --hard
+arzaan1-backup` puts arzaan1 back to `a5b6ef0`.
+
+---
+
+## ✅ Phase 1 — Close the daemon-mode gaps (DONE — commit a5f9f3b)
+
+The README claimed `IngestEvent` and `agent.stdout`/`agent.stderr` were
+blocked outside P4. Both were already wired in the daemon code on
+`arzaan1` (`cmd/agentd/main_linux.go:296-297, 341-371, 575-599`). The
+real remaining gap was the orchestrator's stdout parser — it forwarded
+`[TOOL]`/`[RESULT]` lines to the P5 viewer relay but didn't push them
+back into the daemon's unified pipeline. Resolved:
+
+- [x] **Verified `agent.stdout`/`agent.stderr` works** by reading the
+      daemon code, not the stale README.
+- [x] **Verified `IngestEvent` works** end-to-end via the daemon's
+      `IngestEvent` handler (`main_linux.go:575-599`) which validates
+      the `llm.` prefix and submits to the same pipeline as kernel
+      events.
+- [x] **Wired `IngestEvent` into the stdout parser.** Added
+      `AgentProcess._emit` (`process.py`) that fans every parsed
+      semantic event (`tool_call`, `tool_result`, `user_input`,
+      `agent_output`) to both the streamer AND the daemon. Raw
+      `stdout` lines are excluded to avoid a self-referential loop
+      with `agent.stdout`.
+- [x] **Added 2 new tests**:
+      `test_daemon_mode_forwards_llm_events_via_ingest_event` and
+      `test_local_mode_does_not_call_ingest_event`. Plus the
+      `FakeDaemon` test fixture now records `ingest_event` calls.
+- [x] **Rewrote `orchestrator/README.md`** "Daemon mode status"
+      section. The four-step daemon-mode flow is now documented as
+      working, not blocked.
 
 ---
 
@@ -154,26 +149,30 @@ This phase is about adoption: a dev should pick it up in 5 minutes.
 
 ### 3a — Developer ergonomics
 
+- [x] **Structured logging** (commit a5f9f3b). New module
+      `orchestrator/orchestrator/log.py`; every `print("[orchestrator]
+      …")` swapped for `logger`. Top-level `-q`/`-v` flags on the CLI.
+      The agent stdout mirror `[<name>] <line>` is intentionally kept
+      as `print` because it's a live stream, not log output.
+- [x] **Friendlier error output** (commit a5f9f3b). YAML parse
+      failures now render as `path:line:col: invalid YAML: <problem>`
+      for both manifests and scenarios via the shared
+      `manifest._format_yaml_location` helper. `ManifestError` is now
+      caught alongside `ScenarioError` at the CLI top level.
+- [x] **Stop-on-Ctrl-C race** (commit a5f9f3b).
+      `Orchestrator.stop_all` now catches `KeyError` (agent already
+      removed — silent skip) but logs every other exception via
+      `logger.warning` so real daemon-side bugs surface.
+- [x] **Daemon socket health** (commit a5f9f3b). `DaemonClient` now
+      tracks `_was_available_at_startup` separately and exposes a
+      `.disappeared` property. On RPC failure it re-probes and, if the
+      socket has vanished, logs ERROR. `AgentProcess.start()` notices
+      `disappeared` before falling back to local mode and logs ERROR
+      so the operator can't miss an unsandboxed launch.
 - [ ] **Top-level quickstart for the orchestrator.** Add a section to
   the project `README.md` (between "Step 7" and "Step 8") titled
   "Or use the orchestrator" with three lines:
   `python -m orchestrator run -f examples/two_agent/scenario.yaml`.
-- [ ] **Structured logging.** Replace every `print("[orchestrator] …")`
-  in `core.py`, `process.py`, `events.py` with a module-level
-  `logging.Logger`. Default level INFO, `--quiet`/`--verbose` flags on
-  the CLI. Devs hate uncontrollable stdout noise.
-- [ ] **Friendlier error output.** `cli._print_error` currently shows
-  bare exception strings. Wrap `ScenarioError` and `ManifestError` with
-  the offending YAML path and (where available) line number — match the
-  pattern `agentctl` uses (`manifest.yaml:14:3: …`).
-- [ ] **Stop-on-Ctrl-C is racy.** `core.Orchestrator.stop_all` swallows
-  every exception. Distinguish "agent already exited" (fine) from "stop
-  RPC failed" (log it). Otherwise a flaky stop hides a real daemon bug.
-- [ ] **Daemon socket health.** `DaemonClient._probe` runs once at
-  construction and never retries. If the daemon restarts mid-scenario,
-  the orchestrator silently falls back to local mode (no sandbox!).
-  Either re-probe on every RPC, or fail loud if the socket was reachable
-  at startup and is now gone.
 - [ ] **`orchestrator status` subcommand.** Calls `ListAgents` against
   the daemon and prints a table. Useful when a scenario is running and
   you want to know what's alive without `agentctl list`.
