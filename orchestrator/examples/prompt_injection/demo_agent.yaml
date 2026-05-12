@@ -1,4 +1,6 @@
 name: demo-agent
+model: azure/gpt-5.4
+provider: cisco
 command: ["python", "demo_agent.py"]
 allowed_hosts:
   - llm-proxy.dev.outshift.ai
