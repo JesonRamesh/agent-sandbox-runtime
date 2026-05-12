@@ -129,7 +129,7 @@ This is a bash scripting task, not an orchestrator code task.
 | Gap | Status |
 |-----|--------|
 | 1 — allowed_hosts warning | ✅ Done |
-| 2 — Quickstart next-step message | 🔲 Not started |
+| 2 — Quickstart next-step message | ✅ Done |
 | 3 — Framework integration docs | 🔲 Not started |
 | 4 — Injection demo | ⏸ Deprioritised |
 | 5 — Mac full-stack one-liner | 🔲 Not started |

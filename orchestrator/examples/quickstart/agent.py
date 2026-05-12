@@ -102,12 +102,29 @@ def _run_with_llm(model: str) -> None:
             break
 
 
+def _print_next_steps() -> None:
+    print(
+        "\n[quickstart] Simulation complete.\n"
+        "To run against a real LLM, edit examples/quickstart/agent.yaml:\n"
+        "  1. Uncomment 'model' and 'provider' (e.g. OpenAI or Anthropic)\n"
+        "  2. Uncomment the matching host in allowed_hosts\n"
+        "  3. Export your API key, e.g.:\n"
+        "       export OPENAI_API_KEY=sk-...\n"
+        "       export ANTHROPIC_API_KEY=sk-ant-...\n"
+        "  Then re-run: python -m orchestrator run examples/quickstart/scenario.yaml\n"
+        "\n"
+        "  (Cisco/Outshift proxy users: uncomment the 'cisco' block — no extra key needed.)",
+        flush=True,
+    )
+
+
 def main() -> None:
     model = os.environ.get("MODEL")
     if model:
         _run_with_llm(model)
     else:
         _run_simulated()
+        _print_next_steps()
 
 
 if __name__ == "__main__":

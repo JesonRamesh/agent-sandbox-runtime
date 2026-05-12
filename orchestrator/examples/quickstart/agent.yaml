@@ -4,10 +4,7 @@ description: "Quickstart agent. Works in local mode on any OS. Add model/provide
 # --- Model selection (optional) -----------------------------------
 # Uncomment ONE block to use a real LLM. The orchestrator injects
 # MODEL, API_BASE_URL, and API_KEY as env vars automatically.
-#
-# Cisco / Outshift proxy:
-# model: azure/gpt-5.4
-# provider: cisco
+# Also uncomment the matching host in allowed_hosts below.
 #
 # OpenAI:
 # model: gpt-4o
@@ -16,6 +13,10 @@ description: "Quickstart agent. Works in local mode on any OS. Add model/provide
 # Anthropic:
 # model: claude-sonnet-4-6
 # provider: anthropic
+#
+# Cisco / Outshift proxy (team dev environment — no API key needed):
+# model: azure/gpt-5.4
+# provider: cisco
 # ------------------------------------------------------------------
 
 command: ["python", "examples/quickstart/agent.py"]
@@ -26,10 +27,10 @@ env:
   PYTHONPATH: "."
 
 allowed_hosts:
-  # Add your provider's API host when using a real LLM, e.g.:
-  # - llm-proxy.dev.outshift.ai:443   # cisco
-  # - api.openai.com:443              # openai
-  # - api.anthropic.com:443           # anthropic
+  # Uncomment the line matching your provider above:
+  # - api.openai.com              # openai
+  # - api.anthropic.com           # anthropic
+  # - llm-proxy.dev.outshift.ai   # cisco (team dev proxy)
   []
 
 allowed_paths: []
