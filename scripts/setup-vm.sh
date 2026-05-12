@@ -109,9 +109,23 @@ fi
 # 5. BPF LSM runtime activation (the trap that hides enforcement bugs)
 # -----------------------------------------------------------------------------
 step "5/7" "Verifying BPF LSM is runtime-active (lsm= boot parameter)"
+
+# Detect WSL — the Microsoft kernel has no GRUB and the lsm= cmdline cannot
+# be changed without building a custom kernel. Local mode (orchestrator, tool
+# tracing, dashboard) works fully in WSL; kernel enforcement does not.
+IS_WSL=0
+if grep -qi "microsoft" /proc/version 2>/dev/null || [ -e /proc/sys/fs/binfmt_misc/WSLInterop ]; then
+  IS_WSL=1
+fi
+
 ACTIVE_LSMS=$(cat /sys/kernel/security/lsm 2>/dev/null || echo "")
 if echo ",$ACTIVE_LSMS," | grep -q ',bpf,'; then
   ok "BPF LSM is active: $ACTIVE_LSMS"
+elif [ "$IS_WSL" -eq 1 ]; then
+  warn "Running inside WSL — the BPF LSM kernel parameter cannot be set via GRUB."
+  warn "Kernel enforcement (eBPF policy, EPERM on denied syscalls) is unavailable."
+  warn "Everything else works: orchestrator, tool tracing, multi-agent runs, dashboard."
+  warn "For kernel enforcement, use a native Linux machine or a full Linux VM."
 else
   warn "BPF LSM is NOT active (active LSMs: ${ACTIVE_LSMS:-unknown})"
   warn "Without 'bpf' in lsm=…, all of our LSM hooks load but never fire — "

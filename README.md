@@ -120,26 +120,51 @@ When it finishes it prints exactly what to run next.
 
 **Requires:** Homebrew and the repo checked out under your home directory.
 
-### Linux — manual setup
+### Windows — WSL 2
 
-On a native Linux 6.8+ machine or inside a VM you've already booted:
+Install WSL 2 if you haven't already (run in PowerShell as Administrator):
+
+```powershell
+wsl --install
+```
+
+Then open a WSL terminal, clone the repo **inside the WSL filesystem**
+(not under `/mnt/c/` — filesystem performance and file-watcher support
+are much better in the native WSL fs), and follow the Linux steps:
+
+```bash
+bash scripts/setup-vm.sh   # installs deps; notes kernel enforcement limits on WSL
+make all
+```
+
+**Local mode works fully in WSL** — orchestrator, tool tracing, multi-agent
+scenarios, and the dashboard all run. WSL ports forward to your Windows
+browser automatically, so `http://127.0.0.1:8765` just works.
+
+Kernel enforcement (eBPF policy, `EPERM` on denied syscalls) requires a
+real Linux kernel. For that on Windows, use the Vagrant path below or
+a cloud Linux VM.
+
+### Linux
+
+On a native Linux 6.8+ machine:
 
 ```bash
 bash scripts/setup-vm.sh   # installs deps, activates BPF LSM (reboot if prompted)
 make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-**Intel Mac / Windows — one command (Vagrant):**
+### Vagrant / VirtualBox (optional alternative)
+
+If you specifically want VirtualBox rather than WSL or Lima:
 
 ```bash
 bash scripts/setup-vagrant.sh
 ```
 
-This boots the VM, installs all dependencies, activates the BPF LSM
-(rebooting the VM automatically if needed), and builds the daemon.
-Requires [Vagrant](https://developer.hashicorp.com/vagrant/downloads)
-and [VirtualBox](https://www.virtualbox.org/wiki/Downloads).
-On Windows, run this from Git Bash or WSL.
+Requires [Vagrant](https://developer.hashicorp.com/vagrant/downloads) and
+[VirtualBox](https://www.virtualbox.org/wiki/Downloads). Run from Git Bash
+on Windows.
 
 ---
 

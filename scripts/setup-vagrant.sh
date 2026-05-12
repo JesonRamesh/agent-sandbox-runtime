@@ -29,6 +29,17 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # The Vagrantfile syncs the repo here inside the VM (see Vagrantfile line 54).
 VM_REPO="/home/vagrant/agentsandbox"
 
+# ── 0. Windows guard ─────────────────────────────────────────────────────────
+# On Windows, WSL 2 is the recommended path — simpler, no VirtualBox/Hyper-V
+# conflict, and ports forward to your browser automatically.
+#
+#   wsl --install          (PowerShell as Administrator)
+#   # then inside WSL:
+#   bash scripts/setup-vm.sh && make all
+#
+# This script is kept for anyone who specifically wants VirtualBox, or for
+# Intel Mac users who prefer Vagrant over Lima.
+
 # ── 1. Platform ───────────────────────────────────────────────────────────────
 step "1/5" "Checking platform and hypervisor"
 
