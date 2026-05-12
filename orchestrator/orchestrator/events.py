@@ -52,8 +52,12 @@ def parse_tool_call_line(raw: str) -> dict:
         args_str, request_id = args_str.rsplit(" | request_id=", 1)
         args_str = args_str.strip()
         request_id = request_id.strip() or None
-    # fetch_url args are a bare URL string; other tools use raw_args as fallback
-    args = {"url": args_str} if tool_name == "fetch_url" else {"raw_args": args_str}
+    # Try JSON first (emitted by tool_tracer); fall back to legacy bare-URL format.
+    try:
+        parsed_args = json.loads(args_str)
+        args = parsed_args if isinstance(parsed_args, dict) else {"raw_args": args_str}
+    except json.JSONDecodeError:
+        args = {"url": args_str} if tool_name == "fetch_url" else {"raw_args": args_str}
     parsed = {"raw": raw, "tool": tool_name, "args": args}
     if request_id:
         parsed["request_id"] = request_id

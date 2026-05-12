@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import io
@@ -67,6 +68,85 @@ class FakeDaemon:
             raise ValueError(f"IngestEvent type must be prefixed 'llm.', got '{event_type}'")
         self.ingested.append((agent_id, event_type, details))
         return True
+
+
+class TracerTests(unittest.TestCase):
+    def test_tool_tracer_emits_tool_and_result_markers(self):
+        from orchestrator.tracer import tool_tracer
+        calls = []
+
+        @tool_tracer
+        def my_tool(query: str, limit: int = 10) -> str:
+            return f"result for {query}"
+
+        with mock.patch("builtins.print") as mock_print:
+            result = my_tool("hello", limit=5)
+
+        self.assertEqual(result, "result for hello")
+        printed = [call.args[0] for call in mock_print.call_args_list]
+        tool_line = next(l for l in printed if l.startswith("[TOOL]"))
+        result_line = next(l for l in printed if l.startswith("[RESULT]"))
+        self.assertIn("my_tool", tool_line)
+        self.assertIn('"query":"hello"', tool_line)
+        self.assertIn('"limit":5', tool_line)
+        data = json.loads(result_line[len("[RESULT] "):])
+        self.assertEqual(data["tool"], "my_tool")
+        self.assertTrue(data["ok"])
+        self.assertIn("hello", data["result"])
+
+    def test_tool_tracer_emits_result_on_exception(self):
+        from orchestrator.tracer import tool_tracer
+
+        @tool_tracer
+        def failing_tool(x: int) -> str:
+            raise ValueError("something broke")
+
+        with mock.patch("builtins.print") as mock_print:
+            with self.assertRaises(ValueError):
+                failing_tool(42)
+
+        printed = [call.args[0] for call in mock_print.call_args_list]
+        result_line = next(l for l in printed if l.startswith("[RESULT]"))
+        data = json.loads(result_line[len("[RESULT] "):])
+        self.assertFalse(data["ok"])
+        self.assertIn("something broke", data["error"])
+
+    def test_tool_tracer_async(self):
+        from orchestrator.tracer import tool_tracer
+
+        @tool_tracer
+        async def async_tool(url: str) -> str:
+            return f"fetched {url}"
+
+        with mock.patch("builtins.print") as mock_print:
+            result = asyncio.run(async_tool("https://example.com"))
+
+        self.assertEqual(result, "fetched https://example.com")
+        printed = [call.args[0] for call in mock_print.call_args_list]
+        self.assertTrue(any("[TOOL]" in l for l in printed))
+        self.assertTrue(any("[RESULT]" in l for l in printed))
+
+    def test_emit_user_input_and_agent_output(self):
+        from orchestrator.tracer import emit_agent_output, emit_user_input
+
+        with mock.patch("builtins.print") as mock_print:
+            emit_user_input("do the thing")
+            emit_agent_output("done")
+
+        printed = [call.args[0] for call in mock_print.call_args_list]
+        self.assertIn("[USER] do the thing", printed)
+        self.assertIn("[AGENT] done", printed)
+
+    def test_parse_tool_call_handles_json_args_from_tracer(self):
+        line = '[TOOL] search called with: {"query":"hello","limit":5}'
+        parsed = parse_tool_call_line(line)
+        self.assertEqual(parsed["tool"], "search")
+        self.assertEqual(parsed["args"], {"query": "hello", "limit": 5})
+
+    def test_parse_tool_call_legacy_fetch_url_still_works(self):
+        line = "[TOOL] fetch_url called with: https://example.com"
+        parsed = parse_tool_call_line(line)
+        self.assertEqual(parsed["args"], {"url": "https://example.com"})
 
 
 class EventParsingTests(unittest.TestCase):
