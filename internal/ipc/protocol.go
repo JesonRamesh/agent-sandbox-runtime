@@ -86,15 +86,21 @@ type Error struct {
 // bpf/common.h.reference — adding fields here means matching them in
 // internal/policy/policy.go's Compile().
 type Manifest struct {
-	Name          string            `json:"name"`
-	Command       []string          `json:"command"`
-	Mode          string            `json:"mode,omitempty"`           // "audit" | "enforce" (default "enforce")
-	AllowedHosts  []string          `json:"allowed_hosts,omitempty"`  // "host[:port]" or "ip[/cidr][:port]"
-	AllowedPaths  []string          `json:"allowed_paths,omitempty"`  // path prefixes; bpf_d_path-resolved at file_open
-	AllowedBins   []string          `json:"allowed_bins,omitempty"`   // exec allow-list (full path); empty = allow all
-	ForbiddenCaps []string          `json:"forbidden_caps,omitempty"` // e.g. "CAP_SYS_ADMIN"
-	Env           map[string]string `json:"env,omitempty"`
-	WorkingDir    string            `json:"working_dir,omitempty"`
+	Name                string            `json:"name"`
+	Command             []string          `json:"command"`
+	Mode                string            `json:"mode,omitempty"`                  // "audit" | "enforce" (default "enforce")
+	AllowedHosts        []string          `json:"allowed_hosts,omitempty"`         // "host[:port]" or "ip[/cidr][:port]"
+	AllowedPaths        []string          `json:"allowed_paths,omitempty"`         // path prefixes; bpf_d_path-resolved at file_open
+	AllowedBins         []string          `json:"allowed_bins,omitempty"`          // exec allow-list (full path); empty = allow all
+	ForbiddenCaps       []string          `json:"forbidden_caps,omitempty"`        // e.g. "CAP_SYS_ADMIN"
+	// When true the kernel denies any TCP connect() to a non-TLS port even
+	// if the destination is otherwise on `allowed_hosts`. Used to prevent
+	// credentials in env (or anywhere the agent can read them) from
+	// leaving the host inside an unencrypted protocol. See bpf/common.h's
+	// IS_TLS_PORT() for the encrypted-port allowlist.
+	DenyCleartextEgress bool              `json:"deny_cleartext_egress,omitempty"`
+	Env                 map[string]string `json:"env,omitempty"`
+	WorkingDir          string            `json:"working_dir,omitempty"`
 }
 
 // Validate enforces the v0.1 minimum: a name and at least one argv entry.

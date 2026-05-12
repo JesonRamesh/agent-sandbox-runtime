@@ -59,6 +59,59 @@ func TestExplainNet_AllowExactMatch(t *testing.T) {
 	}
 }
 
+func TestExplainNet_CleartextEgressDeniesAllowlistedHostOnPort80(t *testing.T) {
+	// Use an IP-literal allow-list entry so userspace hostEntryCovers()
+	// matches deterministically (we don't do DNS in the explainer — the
+	// daemon resolves at policy-compile time, but unit tests run without
+	// it). The behaviour under test is "host check passed AND cleartext
+	// egress flag is set AND port is non-TLS → cleartext_egress_denied".
+	m := ipc.Manifest{
+		AllowedHosts:        []string{"93.184.216.34:80"},
+		DenyCleartextEgress: true,
+	}
+	r := Explain(m, AccessFacts{
+		Kind: KindNetConnect, Verdict: "deny",
+		DstIP: "93.184.216.34", DstPort: 80,
+	})
+	if r.ReasonCode != "cleartext_egress_denied" {
+		t.Fatalf("ReasonCode = %q, want cleartext_egress_denied", r.ReasonCode)
+	}
+	for _, sub := range []string{"port 80", "deny_cleartext_egress"} {
+		if !strings.Contains(r.ReasonMessage, sub) {
+			t.Errorf("ReasonMessage missing %q: %s", sub, r.ReasonMessage)
+		}
+	}
+}
+
+func TestExplainNet_CleartextEgressIsSilentForTLSPort(t *testing.T) {
+	// Same flag, but destination is :443 — should not produce the
+	// cleartext-egress reason because :443 is TLS-encrypted.
+	m := ipc.Manifest{
+		AllowedHosts:        []string{"93.184.216.34:443"},
+		DenyCleartextEgress: true,
+	}
+	r := Explain(m, AccessFacts{
+		Kind: KindNetConnect, Verdict: "allow",
+		DstIP: "93.184.216.34", DstPort: 443,
+	})
+	if r.ReasonCode != "host_allowed" {
+		t.Errorf("ReasonCode = %q, want host_allowed", r.ReasonCode)
+	}
+}
+
+func TestIsTLSPort_KnownAndUnknown(t *testing.T) {
+	for _, p := range []uint16{443, 465, 587, 636, 993, 995, 8443, 22, 5223} {
+		if !IsTLSPort(p) {
+			t.Errorf("IsTLSPort(%d) = false, want true", p)
+		}
+	}
+	for _, p := range []uint16{80, 21, 23, 25, 110, 143, 3306, 6379} {
+		if IsTLSPort(p) {
+			t.Errorf("IsTLSPort(%d) = true, want false", p)
+		}
+	}
+}
+
 func TestExplainNet_PortMismatchIsDeny(t *testing.T) {
 	m := ipc.Manifest{AllowedHosts: []string{"1.1.1.1:80"}}
 	r := Explain(m, AccessFacts{

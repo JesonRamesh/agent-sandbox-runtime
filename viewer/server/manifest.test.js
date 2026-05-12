@@ -131,6 +131,38 @@ test('summarizePermissions defaults mode to "enforce"', () => {
   assert.equal(summarizePermissions({ mode: 'audit' }).mode, 'audit');
 });
 
+test('parseManifest reads deny_cleartext_egress as a truthy/falsy scalar', () => {
+  // The generic YAML scalar parser returns `true` for the YAML 1.2 bool
+  // words and `1`/`0` (as numbers) for the digit literals — the
+  // consuming code coerces via `!!`. Test truthiness, not literal type.
+  const m = parseManifest(`
+name: tls-only
+mode: enforce
+allowed_hosts:
+  - example.com:443
+deny_cleartext_egress: true
+`);
+  assert.equal(m.deny_cleartext_egress, true);
+  for (const v of ['yes', 'on', '1', 'true']) {
+    const m2 = parseManifest(`name: x\ndeny_cleartext_egress: ${v}\n`);
+    assert.ok(m2.deny_cleartext_egress, `value ${v} should be truthy`);
+  }
+  for (const v of ['false', 'no', 'off', '0']) {
+    const m2 = parseManifest(`name: x\ndeny_cleartext_egress: ${v}\n`);
+    assert.ok(!m2.deny_cleartext_egress, `value ${v} should be falsy`);
+  }
+});
+
+test('summarizePermissions surfaces deny_cleartext_egress in the network pillar text', () => {
+  const s = summarizePermissions({
+    allowed_hosts: ['example.com:443'],
+    deny_cleartext_egress: true,
+  });
+  assert.equal(s.deny_cleartext_egress, true);
+  const net = s.pillars.find((p) => p.id === 'network');
+  assert.match(net.summary, /deny_cleartext_egress/);
+});
+
 test('loadPermissions reads .yaml under a temp dir and returns summary', async () => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'manifest-test-'));
   await fs.writeFile(path.join(dir, '01-baseline.yaml'), SAMPLE_FULL, 'utf8');

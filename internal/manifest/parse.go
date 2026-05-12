@@ -203,6 +203,15 @@ func parseAndValidate(path string, data []byte, lookup envLookup) (*Manifest, er
 		}
 	}
 
+	// deny_cleartext_egress (optional bool). When true, the kernel denies
+	// any TCP connect() to a non-TLS port for this agent — the structural
+	// "credentials can't leave in plaintext" guard.
+	if n := seen["deny_cleartext_egress"]; n != nil {
+		if v, ok := scalarBool(eb, n, "deny_cleartext_egress"); ok {
+			m.DenyCleartextEgress = v
+		}
+	}
+
 	// working_dir (optional, abs path)
 	if n := seen["working_dir"]; n != nil {
 		if v, ok := scalarString(eb, n, "working_dir"); ok {
@@ -301,6 +310,27 @@ func scalarString(eb *errBuilder, n *yaml.Node, field string) (string, bool) {
 		return "", false
 	}
 	return n.Value, true
+}
+
+// scalarBool unwraps a yaml.ScalarNode whose value is one of the YAML
+// 1.2 boolean literals. Anything else surfaces as a wrong_kind error so
+// a typo (e.g. "yes please") doesn't silently default to false.
+func scalarBool(eb *errBuilder, n *yaml.Node, field string) (bool, bool) {
+	if n.Kind != yaml.ScalarNode {
+		eb.addf(CodeWrongKind, n.Line, n.Column, field,
+			"field %q must be a boolean (true/false), got %s", field, kindName(n.Kind))
+		return false, false
+	}
+	switch strings.ToLower(strings.TrimSpace(n.Value)) {
+	case "true", "yes", "on", "1":
+		return true, true
+	case "false", "no", "off", "0":
+		return false, true
+	default:
+		eb.addf(CodeWrongKind, n.Line, n.Column, field,
+			"field %q must be a boolean (true/false), got %q", field, n.Value)
+		return false, false
+	}
 }
 
 // stringSequence unwraps a yaml.SequenceNode of scalar strings.

@@ -62,15 +62,20 @@ type BinaryRule struct {
 
 // Compiled is the byte-for-byte mirror of `struct policy` from common.h.
 // One value per agent. The loader writes it into policies[policy_id].
+// Field order, types, and any padding MUST match common.h exactly — the
+// BPF programs read this struct at fixed offsets and a silent mismatch
+// produces nonsense decisions.
 type Compiled struct {
-	Mode          uint32
-	NHosts        uint32
-	NPaths        uint32
-	NBins         uint32
-	ForbiddenCaps uint64
-	Hosts         [MaxHosts]HostRule
-	Paths         [MaxPaths]PathRule
-	Bins          [MaxBins]BinaryRule
+	Mode                uint32
+	NHosts              uint32
+	NPaths              uint32
+	NBins               uint32
+	DenyCleartextEgress uint32 // bool — kernel denies non-TLS-port connects when set
+	_                   uint32 // matches `__u32 _pad_dce` so ForbiddenCaps stays 8-aligned
+	ForbiddenCaps       uint64
+	Hosts               [MaxHosts]HostRule
+	Paths               [MaxPaths]PathRule
+	Bins                [MaxBins]BinaryRule
 }
 
 // Compile produces a Compiled from a manifest. Any host that fails to
@@ -140,8 +145,26 @@ func Compile(m ipc.Manifest) (Compiled, error) {
 	}
 	c.ForbiddenCaps = mask
 
+	if m.DenyCleartextEgress {
+		c.DenyCleartextEgress = 1
+	}
+
 	return c, nil
 }
+
+// TLSPorts is the set of destination TCP ports the kernel considers
+// transport-encrypted. Mirrors IS_TLS_PORT() in bpf/common.h — keep them
+// in sync. Used by attribute.go's reason-building so a userspace deny
+// explanation matches what the kernel actually did.
+var TLSPorts = map[uint16]bool{
+	443: true, 465: true, 587: true, 636: true,
+	993: true, 995: true, 8443: true,
+	22: true, 5223: true,
+}
+
+// IsTLSPort reports whether a destination port is in the encrypted-only
+// allowlist used by deny_cleartext_egress.
+func IsTLSPort(port uint16) bool { return TLSPorts[port] }
 
 // ParseHost accepts the four documented forms and returns one HostRule
 // per resolved address:

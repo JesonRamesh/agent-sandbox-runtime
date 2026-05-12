@@ -163,6 +163,36 @@
   min-height: 60px;
 }
 
+/* Checkbox-style label — the deny_cleartext_egress toggle. The hint
+   sits below the field name on its own line, mirroring the textarea
+   labels above. */
+.pd__label--checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pd__label--checkbox input[type='checkbox'] {
+  margin-top: 3px;
+  accent-color: var(--accent-emerald, #10b981);
+  cursor: pointer;
+}
+.pd__label--checkbox > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pd__label--checkbox .pd__hint {
+  margin-top: 0;
+  font-weight: 400;
+  white-space: normal;
+  line-height: 1.4;
+}
+
 /* ── Actions ─────────────────────────────────────────────────────────────── */
 
 .pd__actions {

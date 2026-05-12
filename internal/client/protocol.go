@@ -69,19 +69,20 @@ type RunAgentRequest struct {
 // decode it without re-parsing YAML. Field tags must match those in
 // manifest.Manifest.
 type ManifestPayload struct {
-	Name          string            `json:"name"`
-	Command       []string          `json:"command"`
-	Mode          string            `json:"mode,omitempty"`
-	AllowedHosts  []string          `json:"allowed_hosts"`
-	AllowedPaths  []string          `json:"allowed_paths"`
-	AllowedBins   []string          `json:"allowed_bins,omitempty"`
-	ForbiddenCaps []string          `json:"forbidden_caps,omitempty"`
-	WorkingDir    string            `json:"working_dir"`
-	Env           map[string]string `json:"env"`
-	User          string            `json:"user"`
-	Stdin         string            `json:"stdin"`
-	TimeoutNS     int64             `json:"timeout_ns"`
-	Description   string            `json:"description"`
+	Name                string            `json:"name"`
+	Command             []string          `json:"command"`
+	Mode                string            `json:"mode,omitempty"`
+	AllowedHosts        []string          `json:"allowed_hosts"`
+	AllowedPaths        []string          `json:"allowed_paths"`
+	AllowedBins         []string          `json:"allowed_bins,omitempty"`
+	ForbiddenCaps       []string          `json:"forbidden_caps,omitempty"`
+	DenyCleartextEgress bool              `json:"deny_cleartext_egress,omitempty"`
+	WorkingDir          string            `json:"working_dir"`
+	Env                 map[string]string `json:"env"`
+	User                string            `json:"user"`
+	Stdin               string            `json:"stdin"`
+	TimeoutNS           int64             `json:"timeout_ns"`
+	Description         string            `json:"description"`
 }
 
 // ManifestSource is metadata only — used by the daemon for audit logs.

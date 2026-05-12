@@ -123,6 +123,7 @@ async function readEntry(entry) {
     allowed_paths: parsed.allowed_paths || [],
     allowed_bins: parsed.allowed_bins || [],
     forbidden_caps: parsed.forbidden_caps || [],
+    deny_cleartext_egress: !!parsed.deny_cleartext_egress,
     command: parsed.command || [],
     permissions: summarizePermissions(parsed),
   };
@@ -158,6 +159,9 @@ function renderYaml(policy) {
   lines.push(`name: ${yamlScalar(policy.display_name || policy.name || 'unnamed')}`);
   if (policy.description) lines.push(`description: ${yamlScalar(policy.description)}`);
   lines.push(`mode: ${policy.mode || 'enforce'}`);
+  if (policy.deny_cleartext_egress) {
+    lines.push('deny_cleartext_egress: true');
+  }
 
   const cmd = Array.isArray(policy.command) && policy.command.length > 0
     ? policy.command
@@ -263,6 +267,7 @@ async function update(id, policy, playgroundDir) {
     allowed_paths: policy.allowed_paths || [],
     allowed_bins:  policy.allowed_bins  || [],
     forbidden_caps: policy.forbidden_caps || [],
+    deny_cleartext_egress: !!policy.deny_cleartext_egress,
     command,
   };
 

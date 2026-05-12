@@ -91,7 +91,7 @@ type Reason struct {
 func Explain(m ipc.Manifest, f AccessFacts) Reason {
 	switch f.Kind {
 	case KindNetConnect, KindNetSendto:
-		return explainNet(m.AllowedHosts, f)
+		return explainNetWithFlags(m.AllowedHosts, m.DenyCleartextEgress, f)
 	case KindFileOpen:
 		return explainFile(m.AllowedPaths, f)
 	case KindExec, KindExecBprm:
@@ -106,11 +106,29 @@ func Explain(m ipc.Manifest, f AccessFacts) Reason {
 }
 
 func explainNet(allowed []string, f AccessFacts) Reason {
+	return explainNetWithFlags(allowed, false, f)
+}
+
+// explainNetWithFlags is the real implementation; the bool-less wrapper
+// preserves the public API for callers that don't care about the
+// deny_cleartext_egress gate. When `denyCleartext` is set and the verdict
+// is deny but the destination IS in allowed_hosts, the reason is
+// rewritten to make the cleartext-port cause explicit — otherwise the
+// dashboard would render "8.8.8.8:80 not in allowed_hosts" which is a
+// lie (the host was on the list; the port disqualified it).
+func explainNetWithFlags(allowed []string, denyCleartext bool, f AccessFacts) Reason {
 	target := fmt.Sprintf("%s:%d", f.DstIP, f.DstPort)
 
 	for _, entry := range allowed {
 		if hostEntryCovers(entry, f.DstIP, f.DstPort) {
 			if f.Verdict == "deny" {
+				if denyCleartext && !TLSPorts[f.DstPort] {
+					return Reason{
+						ReasonCode:    "cleartext_egress_denied",
+						ReasonMessage: fmt.Sprintf("%s is on allowed_hosts but port %d is not a TLS port; deny_cleartext_egress=true forbids plaintext egress so credentials in env never leave the host unencrypted", target, f.DstPort),
+						MatchedRule:   entry,
+					}
+				}
 				// Mismatch between userspace match and kernel deny — usually
 				// means DNS re-resolved differently. Surface honestly.
 				return Reason{

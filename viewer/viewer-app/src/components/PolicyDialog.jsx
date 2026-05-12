@@ -24,13 +24,14 @@ export default function PolicyDialog({ policy, onSave, onClose }) {
   const isNew = !policy?.id;
 
   const [form, setForm] = useState(() => ({
-    id:             policy?.id             ?? '',
-    name:           policy?.name           ?? '',
-    mode:           policy?.mode           ?? 'audit',
-    allowed_hosts:  lines(policy?.allowed_hosts),
-    allowed_paths:  lines(policy?.allowed_paths),
-    allowed_bins:   lines(policy?.allowed_bins),
-    forbidden_caps: lines(policy?.forbidden_caps),
+    id:                    policy?.id                    ?? '',
+    name:                  policy?.name                  ?? '',
+    mode:                  policy?.mode                  ?? 'audit',
+    allowed_hosts:         lines(policy?.allowed_hosts),
+    allowed_paths:         lines(policy?.allowed_paths),
+    allowed_bins:          lines(policy?.allowed_bins),
+    forbidden_caps:        lines(policy?.forbidden_caps),
+    deny_cleartext_egress: !!policy?.deny_cleartext_egress,
   }));
 
   const [error, setError]     = useState(null);
@@ -71,12 +72,13 @@ export default function PolicyDialog({ policy, onSave, onClose }) {
 
     const payload = {
       id,
-      name:           form.name.trim(),
-      mode:           form.mode,
-      allowed_hosts:  parseLines(form.allowed_hosts),
-      allowed_paths:  parseLines(form.allowed_paths),
-      allowed_bins:   parseLines(form.allowed_bins),
-      forbidden_caps: parseLines(form.forbidden_caps),
+      name:                  form.name.trim(),
+      mode:                  form.mode,
+      allowed_hosts:         parseLines(form.allowed_hosts),
+      allowed_paths:         parseLines(form.allowed_paths),
+      allowed_bins:          parseLines(form.allowed_bins),
+      forbidden_caps:        parseLines(form.forbidden_caps),
+      deny_cleartext_egress: !!form.deny_cleartext_egress,
     };
 
     setSaving(true);
@@ -188,6 +190,25 @@ export default function PolicyDialog({ policy, onSave, onClose }) {
             onChange={set('forbidden_caps')}
             placeholder="CAP_SYS_ADMIN\nCAP_NET_RAW"
           />
+        </label>
+
+        {/* Deny cleartext egress — checkbox. When on, the kernel denies any
+            connect() whose dest port isn't TLS-encrypted (443/465/587/636/
+            993/995/8443/22/5223), so credentials in env can't leave the
+            host in plaintext even if the agent tries. */}
+        <label className="pd__label pd__label--checkbox">
+          <input
+            type="checkbox"
+            checked={!!form.deny_cleartext_egress}
+            onChange={(e) => setForm((f) => ({ ...f, deny_cleartext_egress: e.target.checked }))}
+          />
+          <span>
+            Deny cleartext egress
+            <span className="pd__hint">
+              kernel-level: deny any TCP connect() to a non-TLS port (443, 465, 587, 636, 993, 995, 8443, 22, 5223)
+              — credentials in env/.env can only leave via encrypted channels
+            </span>
+          </span>
         </label>
 
         <div className="pd__actions">

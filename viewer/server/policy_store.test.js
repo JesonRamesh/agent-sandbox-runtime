@@ -172,3 +172,32 @@ test('renderYaml round-trips via parseManifest', async () => {
   assert.deepEqual(parsed.forbidden_caps, ['CAP_SYS_ADMIN']);
   assert.deepEqual(parsed.command, ['/bin/sh', '-c', 'echo hi']);
 });
+
+test('create/update persists deny_cleartext_egress through the file', async () => {
+  const { parseManifest } = require('./manifest');
+  const dir = await tempPlayground();
+  const created = await create({
+    id: 50,
+    name: 'tls-only',
+    mode: 'enforce',
+    allowed_hosts: ['example.com:443'],
+    deny_cleartext_egress: true,
+  }, dir);
+  assert.equal(created.deny_cleartext_egress, true);
+  // Read raw YAML and confirm the line is present.
+  const text = await fs.readFile(path.join(dir, '50-tls-only.yaml'), 'utf8');
+  assert.match(text, /^deny_cleartext_egress:\s*true\s*$/m);
+  // Round-trip through parseManifest.
+  const parsed = parseManifest(text);
+  assert.equal(parsed.deny_cleartext_egress, true);
+  // Editing with the flag toggled off must persist the absence.
+  const updated = await update(50, {
+    name: 'tls-only',
+    mode: 'enforce',
+    allowed_hosts: ['example.com:443'],
+    deny_cleartext_egress: false,
+  }, dir);
+  assert.equal(updated.deny_cleartext_egress, false);
+  const text2 = await fs.readFile(path.join(dir, '50-tls-only.yaml'), 'utf8');
+  assert.ok(!/deny_cleartext_egress/.test(text2), 'flag line should be absent when false');
+});

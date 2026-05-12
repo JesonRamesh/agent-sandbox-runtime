@@ -30,6 +30,7 @@ const path = require('node:path');
 const KNOWN_KEYS = new Set([
   'name', 'command', 'mode', 'description',
   'allowed_hosts', 'allowed_paths', 'allowed_bins', 'forbidden_caps',
+  'deny_cleartext_egress',  // bool — kernel forbids non-TLS-port connects
   'working_dir', 'env', 'user', 'stdin', 'timeout',
 ]);
 
@@ -52,8 +53,11 @@ function parseScalar(raw) {
   }
   if (/^-?\d+$/.test(s)) return Number(s);
   if (/^-?\d+\.\d+$/.test(s)) return Number(s);
-  if (s === 'true') return true;
-  if (s === 'false') return false;
+  // YAML 1.2 boolean literals; the Go parser is permissive here too
+  // (see internal/manifest/parse.go scalarBool).
+  const lower = s.toLowerCase();
+  if (lower === 'true'  || lower === 'yes' || lower === 'on')  return true;
+  if (lower === 'false' || lower === 'no'  || lower === 'off') return false;
   if (s === 'null' || s === '~') return null;
   return s;
 }
@@ -196,12 +200,16 @@ function summarizePermissions(manifest) {
       label: 'Network',
       manifestKey: 'allowed_hosts',
       allowed: Array.isArray(m.allowed_hosts) ? m.allowed_hosts.map(String) : [],
+      tlsOnly: !!m.deny_cleartext_egress,
       // allowed_hosts: empty list = deny all outbound.
-      describe(allowed) {
+      describe(allowed, _forbidden, ctx) {
+        const tlsSuffix = ctx && ctx.tlsOnly
+          ? ' — and the kernel denies any non-TLS port even on this list (deny_cleartext_egress=true)'
+          : '';
         if (allowed.length === 0) {
-          return { tone: 'restrictive', text: 'all outbound network is blocked' };
+          return { tone: 'restrictive', text: 'all outbound network is blocked' + tlsSuffix };
         }
-        return { tone: 'allow', text: `outbound only to ${formatList(allowed)}` };
+        return { tone: 'allow', text: `outbound only to ${formatList(allowed)}` + tlsSuffix };
       },
     },
     {
@@ -252,7 +260,7 @@ function summarizePermissions(manifest) {
 
   // Build per-pillar entries with the description prefilled.
   for (const p of pillars) {
-    const d = p.describe(p.allowed, p.forbidden);
+    const d = p.describe(p.allowed, p.forbidden, p);
     p.tone = d.tone;
     p.summary = d.text;
     delete p.describe;
@@ -262,6 +270,7 @@ function summarizePermissions(manifest) {
     name: m.name || '',
     mode,
     description: m.description || '',
+    deny_cleartext_egress: !!m.deny_cleartext_egress,
     pillars,
   };
 }
