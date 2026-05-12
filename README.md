@@ -120,30 +120,32 @@ When it finishes it prints exactly what to run next.
 
 **Requires:** Homebrew and the repo checked out under your home directory.
 
-### Windows — WSL 2
+### Windows — GitHub Codespaces (recommended)
 
-Install WSL 2 if you haven't already (run in PowerShell as Administrator):
+The kernel enforcement layer requires a real Linux kernel. WSL 2 uses
+Microsoft's custom kernel and cannot activate the BPF LSM — so on Windows,
+**Codespaces is the recommended path** for full enforcement.
 
-```powershell
-wsl --install
-```
+Click **Code → Codespaces → Create codespace on main** in the GitHub UI,
+or open directly:
 
-Then open a WSL terminal, clone the repo **inside the WSL filesystem**
-(not under `/mnt/c/` — filesystem performance and file-watcher support
-are much better in the native WSL fs), and follow the Linux steps:
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Harrishayy/AgentOS)
+
+The devcontainer runs Ubuntu with a 6.8+ kernel. Once the codespace is
+ready, run:
 
 ```bash
-bash scripts/setup-vm.sh   # installs deps; notes kernel enforcement limits on WSL
-make all
+bash scripts/setup-vm.sh   # activates BPF LSM, installs any remaining deps
+make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-**Local mode works fully in WSL** — orchestrator, tool tracing, multi-agent
-scenarios, and the dashboard all run. WSL ports forward to your Windows
-browser automatically, so `http://127.0.0.1:8765` just works.
+The dashboard at `http://127.0.0.1:8765` is forwarded to your Windows
+browser automatically via Codespaces port forwarding.
 
-Kernel enforcement (eBPF policy, `EPERM` on denied syscalls) requires a
-real Linux kernel. For that on Windows, use the Vagrant path below or
-a cloud Linux VM.
+> **WSL 2 (local mode only):** If you only want to explore the orchestrator,
+> tool tracing, and dashboard without kernel enforcement, WSL 2 works —
+> run `bash scripts/setup-vm.sh && make all` inside WSL. The script will
+> detect WSL and explain what's unavailable.
 
 ### Linux
 
