@@ -149,22 +149,56 @@
 .policy-card__footer {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
 }
 
-.policy-card__edit-btn {
+.policy-card__edit-btn,
+.policy-card__run-btn {
   font-family: var(--mono);
   font-size: 11px;
   font-weight: 600;
-  color: var(--accent-blue);
   padding: 5px 12px;
   border-radius: 5px;
-  border: 1px solid rgba(59, 130, 246, 0.25);
-  background: rgba(59, 130, 246, 0.08);
-  transition: background 150ms ease, border-color 150ms ease;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
   cursor: pointer;
 }
 
+.policy-card__edit-btn {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
+  border-color: rgba(59, 130, 246, 0.25);
+}
 .policy-card__edit-btn:hover {
   background: rgba(59, 130, 246, 0.16);
   border-color: rgba(59, 130, 246, 0.45);
+}
+
+/* Run button — green by default; visually announces "this fires the agent". */
+.policy-card__run-btn {
+  color: var(--accent-emerald, #10b981);
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.30);
+}
+.policy-card__run-btn:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.55);
+}
+.policy-card__run-btn:disabled { opacity: 0.7; cursor: wait; }
+.policy-card__run-btn.is-running {
+  color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.45);
+}
+.policy-card__run-btn.is-ok {
+  color: var(--accent-emerald, #10b981);
+  background: rgba(16, 185, 129, 0.18);
+  border-color: rgba(16, 185, 129, 0.55);
+}
+.policy-card__run-btn.is-fail {
+  color: var(--accent-crimson, #ef4444);
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.55);
 }

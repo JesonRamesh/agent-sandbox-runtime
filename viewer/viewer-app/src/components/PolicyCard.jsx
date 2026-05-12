@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { runPolicy } from '../api/daemonApi.js';
 import './PolicyCard.css';
 
 const MODE_LABELS = {
@@ -14,8 +16,30 @@ function RuleCount({ count, label }) {
   );
 }
 
-export default function PolicyCard({ policy, onEdit }) {
+export default function PolicyCard({ policy, onEdit, onRan }) {
   const mode = MODE_LABELS[policy.mode] || { label: policy.mode?.toUpperCase() || 'UNKNOWN', cls: '' };
+
+  // Run-button state. `idle | running | { ok, message }` so a single render
+  // can express all three. We don't bubble errors via toast — the dashboard
+  // streams kernel events live, so the row colour + reason are the real
+  // confirmation. The mark here is just a quick sanity indicator.
+  const [runState, setRunState] = useState('idle');
+
+  async function handleRun() {
+    setRunState('running');
+    try {
+      const result = await runPolicy(policy.id, `${policy.name}@dashboard`);
+      setRunState({ ok: !!result.ok, message: result.ok ? `exit ${result.exit_code}` : (result.stderr || '').split('\n')[0] });
+      if (onRan) onRan(policy, result);
+    } catch (err) {
+      setRunState({ ok: false, message: err.message });
+    }
+    // Auto-reset to idle after 4s so a second click doesn't carry stale state.
+    setTimeout(() => setRunState('idle'), 4000);
+  }
+
+  const running = runState === 'running';
+  const lastOk  = runState && runState !== 'idle' && runState !== 'running' ? runState.ok : null;
 
   return (
     <div className="policy-card">
@@ -49,6 +73,24 @@ export default function PolicyCard({ policy, onEdit }) {
       )}
 
       <div className="policy-card__footer">
+        <button
+          type="button"
+          className={
+            'policy-card__run-btn' +
+            (running ? ' is-running' : '') +
+            (lastOk === true ? ' is-ok' : '') +
+            (lastOk === false ? ' is-fail' : '')
+          }
+          onClick={handleRun}
+          disabled={running}
+          title={
+            runState && runState !== 'idle' && runState !== 'running'
+              ? `Last run: ${runState.ok ? 'ok' : 'fail'} — ${runState.message || ''}`
+              : `Run this policy now (spawns agentctl with the manifest)`
+          }
+        >
+          {running ? '…' : lastOk === true ? '✓ Ran' : lastOk === false ? '✗ Failed' : '▶ Run'}
+        </button>
         <button className="policy-card__edit-btn" onClick={() => onEdit(policy)}>
           Edit policy
         </button>

@@ -1,0 +1,25 @@
+# Scenario 5 — CREDENTIALS PILLAR DENY.
+# Agent invokes capsh to drop a forbidden capability into its effective set;
+# the kernel rejects the capset() with EPERM.
+name: scenario-5-cred-deny
+mode: enforce
+command:
+  - /bin/sh
+  - -c
+  - |
+    echo "[scenario-5] attempting to add CAP_SYS_ADMIN to effective set ..."
+    if /usr/sbin/capsh --caps='cap_sys_admin+eip' -- -c true 2>&1; then
+      echo "[scenario-5] FAIL: capset was not blocked"
+    else
+      echo "[scenario-5] OK: kernel denied capset()"
+    fi
+allowed_hosts: []
+allowed_paths:
+  - /
+allowed_bins:
+  - /bin/sh
+  - /usr/sbin/capsh
+  - /usr/bin/sh
+forbidden_caps:
+  - CAP_SYS_ADMIN
+  - CAP_BPF

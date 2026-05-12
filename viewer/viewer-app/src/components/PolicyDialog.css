@@ -11,9 +11,12 @@
   border-radius: 12px;
 }
 
-/* Backdrop */
+/* Backdrop — opaque enough to clearly separate the dialog from the page
+   underneath. The previous 0.65 alpha combined with the form's near-
+   invisible 0.07 white gradient made every input read as a faint outline.
+   We dial both the backdrop and the form panel up to readable opacities. */
 .pd::backdrop {
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.80);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
@@ -23,14 +26,16 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: linear-gradient(160deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.03) 100%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255,255,255,0.13);
-  border-top: 1px solid rgba(255,255,255,0.22);
+  /* Solid dark panel that matches the rest of the v2 chrome (var(--bg-panel)
+     with a fallback for older themes). Drops the backdrop-filter blur — it
+     does nothing useful over an already-opaque dark backdrop and only adds
+     GPU cost. */
+  background: var(--bg-panel, #14171c);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.16));
+  border-top: 1px solid var(--border-active, rgba(255,255,255,0.28));
   border-radius: 12px;
   padding: 20px 22px 18px;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.09);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.06);
   overflow-y: auto;
   max-height: 90vh;
 }

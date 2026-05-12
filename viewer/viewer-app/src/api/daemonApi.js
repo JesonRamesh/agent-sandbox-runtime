@@ -66,6 +66,56 @@ export async function createBinding(cgroupId, policyId) {
   // 204 No Content on success
 }
 
+/**
+ * Apply a policy as a one-shot demo run. Behind the scenes this hits the
+ * same /api/bindings endpoint as createBinding but accepts a free-form
+ * `label` instead of a numeric cgroup id — the relay treats cgroup_id as
+ * a display string and uses policy_id to look up which playground YAML to
+ * spawn via agentctl.
+ *
+ * Returns the run result: { ok, exit_code, stdout, stderr, binding }.
+ *
+ * @param {number} policyId
+ * @param {string} [label]   shown in the active-agents view, defaults to "demo"
+ * @returns {Promise<object>}
+ */
+export async function runPolicy(policyId, label = 'demo') {
+  const res = await fetch('/api/bindings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cgroup_id: String(label), policy_id: Number(policyId) }),
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { const body = await res.json(); if (body && body.message) msg = body.message; } catch {}
+    throw new Error(`runPolicy: ${msg}`);
+  }
+  return res.json();
+}
+
+/**
+ * Fire the LLM-driven agent harness with a free-form task. The relay
+ * spawns orchestrator/run_llm_agent.py and returns immediately (the
+ * actual session_start / tool_call / agent_output events arrive over
+ * the WebSocket as the LLM works).
+ *
+ * @param {string} task
+ * @returns {Promise<{ok:boolean, pid:number, started_at:string}>}
+ */
+export async function runLlmAgent(task) {
+  const res = await fetch('/api/llm/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task }),
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try { const body = await res.json(); if (body && body.message) msg = body.message; } catch {}
+    throw new Error(`runLlmAgent: ${msg}`);
+  }
+  return res.json();
+}
+
 // ─── Health ────────────────────────────────────────────────────────────────
 
 /**
