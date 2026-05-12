@@ -11,6 +11,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -18,6 +19,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -36,6 +38,7 @@ import (
 )
 
 const daemonVersion = "0.1.0-phase3"
+const maxAgentOutputChunkBytes = 8 * 1024
 
 func main() {
 	socketPath := flag.String("socket", ipc.DefaultSocketPath, "Unix socket path")
@@ -270,8 +273,19 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		}
 		cmd.Dir = m.WorkingDir
 	}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		_ = bh.Cleanup()
+		_ = cg.Destroy()
+		return "", fmt.Errorf("%w: capture stdout: %v", ipc.ErrLaunchFailedErr, err)
+	}
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		_ = bh.Cleanup()
+		_ = cg.Destroy()
+		return "", fmt.Errorf("%w: capture stderr: %v", ipc.ErrLaunchFailedErr, err)
+	}
 
 	if err := cmd.Start(); err != nil {
 		_ = bh.Cleanup()
@@ -321,6 +335,8 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		"policy_id":   bh.PolicyID(),
 	})
 
+	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stdout", stdoutPipe)
+	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stderr", stderrPipe)
 	go d.streamBPFEvents(evtCtx, id, bh)
 	go d.waitAgent(a, res)
 
@@ -361,6 +377,82 @@ func (d *daemon) streamBPFEvents(ctx context.Context, agentID string, bh *bpf.Ha
 			details["filename"] = ev.Exec.Filename
 		}
 		d.emitEvent(agentID, ev.PID, ev.Kind, details)
+	}
+}
+
+func (d *daemon) streamAgentOutput(
+	ctx context.Context,
+	agentID string,
+	pid uint32,
+	eventType string,
+	r io.Reader,
+) {
+	reader := bufio.NewReader(r)
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		line, truncated, err := readOutputChunk(reader, maxAgentOutputChunkBytes)
+		if !(errors.Is(err, io.EOF) && line == "" && !truncated) {
+			d.emitEvent(agentID, pid, eventType, map[string]any{
+				"line":      line,
+				"truncated": truncated,
+			})
+		}
+		if err != nil {
+			if errors.Is(err, io.EOF) || ctx.Err() != nil {
+				return
+			}
+			d.log.Warn("agent output stream failed",
+				"agent_id", agentID,
+				"type", eventType,
+				"err", err)
+			return
+		}
+	}
+}
+
+func readOutputChunk(r *bufio.Reader, limit int) (string, bool, error) {
+	if limit <= 0 {
+		limit = maxAgentOutputChunkBytes
+	}
+	buf := make([]byte, 0, limit)
+	for {
+		b, err := r.ReadByte()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				if len(buf) == 0 {
+					return "", false, io.EOF
+				}
+				return string(buf), false, io.EOF
+			}
+			if len(buf) > 0 {
+				return string(buf), false, err
+			}
+			return "", false, err
+		}
+
+		if b == '\n' {
+			return string(buf), false, nil
+		}
+		if b == '\r' {
+			continue
+		}
+
+		buf = append(buf, b)
+		if len(buf) < limit {
+			continue
+		}
+
+		next, err := r.Peek(1)
+		if err == nil && len(next) == 1 && next[0] == '\n' {
+			_, _ = r.ReadByte()
+			return string(buf), false, nil
+		}
+		if errors.Is(err, io.EOF) {
+			return string(buf), false, io.EOF
+		}
+		return string(buf), true, nil
 	}
 }
 
@@ -537,6 +629,32 @@ func (d *daemon) StreamEvents(ctx context.Context, agentID string, sink func(ipc
 	unsub := d.pipeline.Subscribe(agentID, sink)
 	defer unsub()
 	<-ctx.Done()
+	return nil
+}
+
+func (d *daemon) IngestEvent(_ context.Context, agentID string, event ipc.IngestEvent) error {
+	a, ok := d.registry.Get(agentID)
+	if !ok {
+		return fmt.Errorf("%w: %s", ipc.ErrAgentNotFoundErr, agentID)
+	}
+	if event.Type == "" || len(event.Type) < 5 || event.Type[:4] != "llm." {
+		return fmt.Errorf("%w: event.type %q must be prefixed llm.", ipc.ErrInvalidManifestErr, event.Type)
+	}
+	ts := event.TS
+	if ts.IsZero() {
+		ts = time.Now()
+	}
+	details := event.Details
+	if len(details) == 0 {
+		details = json.RawMessage(`{}`)
+	}
+	d.pipeline.Submit(ipc.Event{
+		Ts:      ts,
+		AgentID: agentID,
+		Type:    event.Type,
+		PID:     uint32(a.PID),
+		Details: details,
+	})
 	return nil
 }
 

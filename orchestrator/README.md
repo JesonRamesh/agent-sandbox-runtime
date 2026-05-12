@@ -1,156 +1,242 @@
-# P4 — Orchestrator & Demo
+# P4 Orchestrator
 
-What this component is, how to run it, and what each teammate needs to know.
+This subtree is now split cleanly:
 
----
+- `orchestrator/orchestrator/` contains the core package
+- `orchestrator/examples/` contains demos and sample scenarios
+- `orchestrator/tests/` contains P4-side verification
 
 ## What P4 owns
 
-- **Orchestrator** — manages agent lifecycle (launch, monitor, restart, stop)
-- **Demo** — the prompt-injection attack scenario used in the final video
-- **Event bridge** — parses LLM-level events and forwards them to P5's process viewer
+- Orchestrator lifecycle management
+- LLM-level event parsing and viewer forwarding
+- Multi-agent scenario coordination
+- Examples that demonstrate how to use the runtime
 
----
+## Structure
 
-## How to run the demo (right now)
+```text
+orchestrator/
+  orchestrator/
+    core.py
+    daemon.py
+    events.py
+    manifest.py
+    process.py
+    scenario.py
+    cli.py
+  examples/
+    prompt_injection/
+    two_agent/
+  tests/
+```
 
-Requires: `OPENAI_API_KEY` set (or in a `.env` file), `ngrok` running on port 8888.
+## Core usage
+
+From the `orchestrator/` directory, run a multi-agent scenario with:
 
 ```bash
-# Terminal 1
-python evil_server.py
-
-# Terminal 2
-ngrok http 8888
-
-# Terminal 3
-python demo_launcher.py https://<your-ngrok-url>
+python -m orchestrator run -f examples/two_agent/scenario.yaml
 ```
 
-**Success signal:** two `[TOOL] fetch_url called with:` lines. The second URL is the unauthorized call the injection caused. That's the call the eBPF sandbox will block in the "after" demo.
+This launches one OS process per agent and applies the usual orchestrator
+behavior: launch, monitor, stop, and optional restart-on-crash handling.
 
-See `before-findings.md` for full baseline results and what injection techniques were tested.
+Validate a scenario and every referenced manifest before launch with:
 
----
-
-## Orchestrator — how it works
-
-```
-demo_launcher.py  (or agentctl, or your code)
-        │
-        ▼
-  Orchestrator          ← core.py
-  ├── DaemonClient      ← daemon.py  (talks to P2's daemon, or stubs when absent)
-  ├── EventStreamer     ← events.py  (sends LLM events to P5's WebSocket)
-  └── AgentProcess[]   ← process.py (one per running agent)
+```bash
+python -m orchestrator validate -f examples/two_agent/scenario.yaml --json
 ```
 
-### Two modes
+Install the package and console script from the repo root with:
 
-**Stub mode (now):** daemon socket absent → `AgentProcess` spawns via `Popen`, reads stdout, parses `[TOOL]` lines, emits events to P5 directly over WebSocket.
+```bash
+python -m pip install -e .
+orchestrator validate -f orchestrator/examples/two_agent/scenario.yaml
+```
 
-**Daemon mode (Week 3):** daemon socket present → `AgentProcess` calls `DaemonClient.run_agent()`, gets back an `agent_id`. No `Popen`. Orchestrator wraps the model loop and calls `DaemonClient.ingest_event()` for each LLM event. Daemon fans everything out to P5.
+Inspect the daemon's current view of running agents with:
 
-Both modes share the same `Orchestrator` API — the switch is automatic based on whether `/run/agent-sandbox.sock` (or `$AGENT_SANDBOX_SOCKET`) is reachable.
+```bash
+python -m orchestrator status
+```
 
-### Launching an agent
+### Scenario format
+
+```yaml
+name: research-writer-pipeline
+description: Research runs first, writer runs only after successful completion.
+stagger_seconds: 0.5
+max_retries: 1
+agents:
+  - id: research
+    manifest: ./research-agent.yaml
+  - id: writer
+    manifest: ./writer-agent.yaml
+    depends_on: [research]
+    launch_when: success
+```
+
+Each referenced manifest is still a single-agent sandbox contract. The scenario
+file is the P4 layer that coordinates multiple agents.
+
+Current scenario-agent fields:
+
+- `id`: stable workflow identifier
+- `manifest`: relative or absolute path to an agent manifest
+- `depends_on`: other scenario agent ids that must finish first
+- `launch_when`: `success` or `complete`
+- `description`: optional human note
+
+Top-level scenario fields:
+
+- `name`
+- `description`
+- `stagger_seconds`
+- `max_retries`
+- `agents`
+
+JSON Schema for editors lives at:
+
+```text
+orchestrator/orchestrator/schema/scenario.schema.json
+```
+
+When a run finishes, the orchestrator can emit a machine-readable summary:
+
+```bash
+python -m orchestrator run -f examples/two_agent/scenario.yaml --json --summary-file summary.json
+```
+
+### Launch one agent directly in Python
 
 ```python
 from orchestrator import Orchestrator
 
-orch = Orchestrator(ws_url="ws://localhost:8765")   # ws_url optional
-orch.launch("demo_agent.yaml")                       # or launch_direct(manifest)
-orch.wait_for("demo-agent")
+orch = Orchestrator(ws_url="ws://localhost:8765")
+orch.launch("path/to/agent.yaml")
+orch.wait_for("my-agent")
 orch.stop_all()
 ```
 
-Restart policy lives on the `Orchestrator`, not in the manifest:
+Restart policy lives on the orchestrator:
 
 ```python
 orch = Orchestrator(restart_on_crash=True, max_restarts=3)
 ```
 
----
-
 ## Manifest format
 
 ```yaml
-name: demo-agent
-command: ["python3", "demo_agent.py"]
-allowed_hosts:                        # required — [] means deny all egress
-  - llm-proxy.dev.outshift.ai
-allowed_paths: []                     # required — non-empty rejected until P1 ships path enforcement
-env:                                  # optional
-  SOME_VAR: value
-mode: enforce                         # optional — "enforce" | "audit", default enforce
+name: llm-agent
+command: ["/usr/bin/python3", "/opt/agents/demo.py"]
+allowed_hosts:
+  - api.openai.com:443
+allowed_paths:
+  - /opt/agents/
+working_dir: /opt/agents
+env:
+  PYTHONUNBUFFERED: "1"
+user: "65534"
+timeout: "5m"
+description: "Example agent"
 ```
 
-`allowed_hosts` accepts hostnames, `*.wildcard` (single label), and IP literals with optional `:port`. No CIDR in v1.
+Top-level manifest keys accepted by the integrated runtime are:
 
-`restart_on_crash` and `max_restarts` are **not** manifest fields — they're orchestrator config (see above).
+- `name`
+- `command`
+- `mode`
+- `allowed_hosts`
+- `allowed_paths`
+- `allowed_bins`
+- `forbidden_caps`
+- `working_dir`
+- `env`
+- `user`
+- `stdin`
+- `timeout`
+- `description`
 
----
+## Examples
 
-## Events emitted to P5
+### Prompt injection
 
-Orchestrator is a **WebSocket client**. P5 owns the server at `ws://localhost:8765`.
+The prompt-injection example now lives in:
 
-In stub mode, events go directly over that socket. In daemon mode, they go via `IngestEvent` RPC to P2's daemon, which fans them out to P5 — orchestrator does not connect to P5's WebSocket at all.
-
-### Envelope (NDJSON)
-
-```json
-{"agent": "demo-agent", "type": "tool_call", "ts": 1714000000.123, "data": {...}}
+```text
+examples/prompt_injection/
 ```
 
-### Event types
+Run it with:
 
-| type | when | `data` |
-|---|---|---|
-| `stdout` | every line of agent output | `{"line": "..."}` |
-| `tool_call` | agent calls a tool | `{"raw": "...", "tool": "fetch_url", "args": {"url": "..."}}` |
-| `stopped` | agent exits 0 | `{"exit_code": 0}` |
-| `crashed` | agent exits non-zero | `{"exit_code": N}` |
+```bash
+python examples/prompt_injection/demo_launcher.py https://<your-ngrok-url>
+```
 
-In daemon mode, the equivalent `llm.*` types go via `IngestEvent` — see INTERFACES §3.2.
+### Two-agent handoff
 
----
+The multi-agent example now lives in:
 
-## For P2
+```text
+examples/two_agent/
+```
 
-Socket path: `/run/agent-sandbox.sock` (or `$AGENT_SANDBOX_SOCKET`). We implement:
-- `RunAgent` — launch an agent, returns `agent_id`
-- `StopAgent` — stop by `agent_id`
-- `ListAgents` — snapshot
-- `IngestEvent` — push `llm.*` events into the unified pipeline
+It demonstrates the recommended pattern for process isolation: agents stay in
+separate OS processes and interact through an explicit handoff path rather than
+sharing memory or a PID.
 
-We do **not** `Popen` in daemon mode. We do **not** track PIDs — only `agent_id`.
+### Single-agent quickstart
 
-Open: waiting on `agent.stdout` / `agent.stderr` stream events and the PR for `IngestEvent` + `agent.stdout/stderr` in `daemon/api/proto.md`.
+Use `examples/single_agent/` for the smallest scenario in the repo:
 
-## For P3
+```bash
+python -m orchestrator run -f examples/single_agent/scenario.yaml
+```
 
-We talk directly to the daemon — we do not shell out to `agentctl`. The orchestrator and `agentctl` are parallel clients of the same socket.
+### Fanout and code exec
 
-Socket conflict now resolved: `/run/agent-sandbox.sock` is the agreed default (DEC-011).
+Two more sample scenarios are available:
 
-## For P5
+- `examples/fanout/` launches three independent agents in parallel.
+- `examples/code_exec/` shows an agent with no network access, one allowed
+  binary, and one writable path.
 
-We're a WebSocket **client** in stub mode, daemon-relayed in daemon mode. You own the server.
+## Daemon mode
 
-Structured `tool_call` data: `{"raw": "...", "tool": "<name>", "args": {...}}` — `args` is a parsed object, not a raw string. `call_id` is included for `llm.tool_call` / `llm.tool_result` correlation in daemon mode.
+When `agentd` is running on `/run/agent-sandbox.sock`, the orchestrator:
 
-If the WebSocket is unreachable at launch we log and continue — no crash.
+1. Submits the manifest via `RunAgent` — no `subprocess.Popen`, the daemon
+   handles `clone3` into the sandbox cgroup.
+2. Subscribes to `StreamEvents` for the returned `agent_id` and tracks
+   lifecycle from `agent.started` / `agent.exited` / `agent.crashed`.
+3. Receives every line the agent writes as `agent.stdout` / `agent.stderr`
+   events and parses `[TOOL]` / `[RESULT]` / `[USER]` / `[AGENT]` markers.
+4. Forwards parsed LLM events back into the daemon's unified pipeline via
+   `IngestEvent` as `llm.tool_call`, `llm.tool_result`, `llm.user_input`,
+   and `llm.agent_output`, so anything else subscribing to the daemon
+   stream (`agentctl logs`, alternate dashboards) sees them keyed by the
+   same `agent_id` as the kernel events.
 
----
+In local mode (daemon socket absent), the orchestrator falls back to
+`subprocess.Popen` and forwards events only to the viewer relay.
 
-## Current status
+## Verification
 
-| | |
-|---|---|
-| Demo attack ("before") | Done — reproducible, documented in `before-findings.md` |
-| Orchestrator stub mode | Done |
-| Daemon protocol wired | Done — stubs cleanly when P2's daemon isn't up |
-| `llm.*` event schema | Drafted, sent to P2 for INTERFACES §3.2 |
-| Demo "after" (eBPF blocks call) | Blocked on P1 + P2 |
-| Daemon mode model loop wrapper | Week 3 |
+Run the P4 tests with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Per-agent orchestrator logs are written under:
+
+```text
+~/.cache/agent-sandbox/orchestrator/<scenario-or-session>/<agent>.log
+```
+
+Run the all-in-one Linux bootstrap from the repo root with:
+
+```bash
+bash scripts/quickstart.sh
+```

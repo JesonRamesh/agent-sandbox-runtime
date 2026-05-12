@@ -12,6 +12,19 @@ class ManifestError(Exception):
     """
 
 
+def _format_yaml_location(path: str | Path, exc: yaml.YAMLError) -> str:
+    """Extract ``path:line:col`` from a YAML error if PyYAML attached a mark.
+
+    PyYAML's MarkedYAMLError exposes ``problem_mark`` with 0-indexed line and
+    column. We render them 1-indexed to match what every editor and the
+    ``agentctl`` validator already use.
+    """
+    mark = getattr(exc, "problem_mark", None) or getattr(exc, "context_mark", None)
+    if mark is None:
+        return f"{path}"
+    return f"{path}:{mark.line + 1}:{mark.column + 1}"
+
+
 @dataclass
 class AgentManifest:
     name: str
@@ -42,7 +55,10 @@ def load_manifest(path: str | Path) -> AgentManifest:
     except OSError as e:
         raise ManifestError(f"manifest '{path}' could not be read: {e}") from e
     except yaml.YAMLError as e:
-        raise ManifestError(f"manifest '{path}' is not valid YAML: {e}") from e
+        problem = getattr(e, "problem", None) or str(e)
+        raise ManifestError(
+            f"{_format_yaml_location(path, e)}: invalid YAML: {problem}"
+        ) from e
 
     if data is None:
         raise ManifestError(f"manifest '{path}' is empty")

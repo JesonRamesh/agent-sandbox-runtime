@@ -165,6 +165,13 @@ For a complete smoke test that asserts both verdicts in one go:
 ```bash
 sudo bash examples/test-it.sh
 ```
+### Or use the orchestrator
+
+```bash
+cd orchestrator
+python -m orchestrator run -f examples/two_agent/scenario.yaml
+python -m orchestrator status
+```
 
 ### Step 8 — write your own manifest
 
@@ -223,6 +230,7 @@ limactl delete agentsandbox
 | [`docs/INTERFACES.md`](docs/INTERFACES.md)              | Wire-protocol reference: IPC framing, RPC methods, event schemas. |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)          | What we defend against, what we don't, operator assumptions.    |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)            | How to build, test, and contribute.                             |
+| [`docs/RECIPES.md`](docs/RECIPES.md)                    | Common manifest and orchestrator patterns.                      |
 | [`docs/operations.md`](docs/operations.md)              | Running the daemon as a long-lived systemd service.             |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                    | Branch and commit conventions, PR checklist.                    |
 

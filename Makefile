@@ -28,7 +28,7 @@ GO_FLAGS ?=
 GO_BUILD := go build $(GO_FLAGS)
 
 .PHONY: all bpf agentd agentctl test-client \
-        test integration e2e \
+        test integration e2e demo \
         install uninstall fmt vet lint clean help
 
 all: bpf agentd agentctl test-client
@@ -61,6 +61,9 @@ integration:
 
 e2e: agentctl
 	go test ./e2e/...
+
+demo:
+	bash scripts/quickstart.sh
 
 install: all
 	bash deploy/install.sh
