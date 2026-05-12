@@ -129,13 +129,17 @@ bash scripts/setup-vm.sh   # installs deps, activates BPF LSM (reboot if prompte
 make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-**Intel Mac / Windows (Vagrant):**
+**Intel Mac / Windows — one command (Vagrant):**
 
 ```bash
-brew install vagrant
-vagrant up && vagrant ssh
-# then run the Linux steps above inside the VM
+bash scripts/setup-vagrant.sh
 ```
+
+This boots the VM, installs all dependencies, activates the BPF LSM
+(rebooting the VM automatically if needed), and builds the daemon.
+Requires [Vagrant](https://developer.hashicorp.com/vagrant/downloads)
+and [VirtualBox](https://www.virtualbox.org/wiki/Downloads).
+On Windows, run this from Git Bash or WSL.
 
 ---
 

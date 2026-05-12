@@ -119,7 +119,8 @@ No single script takes a Mac user from zero to enforcement running.
 This is a bash scripting task, not an orchestrator code task.
 
 **Files to touch:**
-- `scripts/setup-lima.sh` — new script
+- `scripts/setup-lima.sh` — new script (macOS/Lima)
+- `scripts/setup-vagrant.sh` — new script (Intel Mac / Windows / Linux via Vagrant)
 - `README.md` — replace the manual 7-step Lima section with one command
 
 ---
