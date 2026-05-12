@@ -144,6 +144,86 @@ class ManifestTests(unittest.TestCase):
                 load_manifest(path)
         self.assertIn("missing required field 'allowed_hosts'", str(ctx.exception))
 
+    def test_load_manifest_model_fields_optional(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        self.assertIsNone(m.model)
+        self.assertIsNone(m.provider)
+        self.assertIsNone(m.base_url)
+
+    def test_load_manifest_model_fields_loaded(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n"
+                "model: claude-sonnet-4-6\nprovider: anthropic\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        self.assertEqual(m.model, "claude-sonnet-4-6")
+        self.assertEqual(m.provider, "anthropic")
+
+    def test_resolved_base_url_from_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n"
+                "provider: anthropic\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        self.assertEqual(m.resolved_base_url(), "https://api.anthropic.com")
+
+    def test_resolved_base_url_explicit_overrides_provider(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n"
+                "provider: anthropic\nbase_url: https://my-proxy.example.com\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        self.assertEqual(m.resolved_base_url(), "https://my-proxy.example.com")
+
+    def test_model_env_vars_injected(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n"
+                "model: claude-sonnet-4-6\nprovider: anthropic\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        old = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            os.environ["ANTHROPIC_API_KEY"] = "test-key"
+            env = m.model_env_vars()
+        finally:
+            if old is None:
+                os.environ.pop("ANTHROPIC_API_KEY", None)
+            else:
+                os.environ["ANTHROPIC_API_KEY"] = old
+        self.assertEqual(env["MODEL"], "claude-sonnet-4-6")
+        self.assertEqual(env["PROVIDER"], "anthropic")
+        self.assertEqual(env["API_BASE_URL"], "https://api.anthropic.com")
+        self.assertEqual(env["API_KEY"], "test-key")
+
+    def test_model_env_vars_empty_when_no_model(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "agent.yaml"
+            path.write_text(
+                "name: a\ncommand: ['python']\nallowed_hosts: []\nallowed_paths: []\n",
+                encoding="utf-8",
+            )
+            m = load_manifest(path)
+        self.assertEqual(m.model_env_vars(), {})
+
 
 class ScenarioTests(unittest.TestCase):
     def test_load_scenario_resolves_manifest_paths_relative_to_scenario(self):
@@ -602,6 +682,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             allowed_paths=[],
             env={},
             mode="enforce",
+            model_env_vars=lambda: {},
         )
 
         agent = AgentProcess(manifest, streamer, daemon)
@@ -660,6 +741,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             allowed_paths=[],
             env={},
             mode="enforce",
+            model_env_vars=lambda: {},
         )
 
         agent = AgentProcess(manifest, streamer, daemon)
@@ -704,6 +786,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             allowed_paths=[],
             env={},
             mode="enforce",
+            model_env_vars=lambda: {},
         )
 
         agent = AgentProcess(manifest, streamer, daemon)
@@ -729,6 +812,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             allowed_paths=[],
             env={},
             mode="enforce",
+            model_env_vars=lambda: {},
         )
         agent = AgentProcess(manifest, streamer, UnavailableDaemon())
         agent.start()
@@ -762,6 +846,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
                     env={},
                     mode="enforce",
                     working_dir=None,
+                    model_env_vars=lambda: {},
                 )
                 agent = AgentProcess(manifest, streamer, UnavailableDaemon())
                 agent.start()
@@ -796,6 +881,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             env={},
             mode="enforce",
             working_dir=None,
+            model_env_vars=lambda: {},
         )
         agent = AgentProcess(manifest, streamer, UnavailableDaemon())
         agent.start()
@@ -821,6 +907,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             allowed_paths=[],
             env={},
             mode="enforce",
+            model_env_vars=lambda: {},
         )
         agent = AgentProcess(manifest, streamer, SlowDaemon([]))
         agent.start()
@@ -843,6 +930,7 @@ class AgentProcessDaemonModeTests(unittest.TestCase):
             env={},
             mode="enforce",
             working_dir=None,
+            model_env_vars=lambda: {},
         )
         agent = AgentProcess(manifest, streamer, UnavailableDaemon())
         agent.start()

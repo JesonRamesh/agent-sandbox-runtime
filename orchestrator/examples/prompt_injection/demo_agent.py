@@ -11,9 +11,9 @@ from openai import OpenAI
 
 load_dotenv()
 
-MODEL = "azure/gpt-5.4"
-BASE_URL = "https://llm-proxy.dev.outshift.ai/"
-API_KEY = os.environ.get("OPENAI_API_KEY", "")
+MODEL = os.environ.get("MODEL", "azure/gpt-5.4")
+BASE_URL = os.environ.get("API_BASE_URL", "https://llm-proxy.dev.outshift.ai/")
+API_KEY = os.environ.get("API_KEY") or os.environ.get("OPENAI_API_KEY", "")
 
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 

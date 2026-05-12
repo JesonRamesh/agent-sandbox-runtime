@@ -80,7 +80,12 @@ class AgentProcess:
         self._log_path = self._build_log_path()
         self._stream_threads = []
         if self._daemon and self._daemon._available:
-            self._agent_id = self._daemon.run_agent(self.manifest)
+            manifest = self.manifest
+            model_vars = manifest.model_env_vars()
+            if model_vars:
+                from dataclasses import replace
+                manifest = replace(manifest, env={**model_vars, **manifest.env})
+            self._agent_id = self._daemon.run_agent(manifest)
             if self._agent_id:
                 self._stream_stop = threading.Event()
                 threading.Thread(target=self._watch_daemon_events, daemon=True).start()
@@ -114,7 +119,7 @@ class AgentProcess:
 
     def _start_local(self):
         """Fallback: spawn directly when daemon is unavailable (stub / local dev)."""
-        env = {**os.environ, **self.manifest.env}
+        env = {**os.environ, **self.manifest.model_env_vars(), **self.manifest.env}
         cwd = None
         working_dir = getattr(self.manifest, "working_dir", None)
         if working_dir:
