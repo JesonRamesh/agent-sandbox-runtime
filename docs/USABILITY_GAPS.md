@@ -130,6 +130,6 @@ This is a bash scripting task, not an orchestrator code task.
 |-----|--------|
 | 1 — allowed_hosts warning | ✅ Done |
 | 2 — Quickstart next-step message | ✅ Done |
-| 3 — Framework integration docs | 🔲 Not started |
+| 3 — Framework integration docs | ✅ Done |
 | 4 — Injection demo | ⏸ Deprioritised |
 | 5 — Mac full-stack one-liner | 🔲 Not started |
