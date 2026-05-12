@@ -51,6 +51,55 @@ context, on the dashboard).
 
 ---
 
+## Try it now — any OS, no VM required
+
+The orchestrator, model selection, and live dashboard work on **Mac,
+Windows, and Linux** without a Linux VM. In local mode the agent runs
+as a normal process — the kernel enforcement is inactive, but everything
+else works: tool tracing, model switching, multi-agent scenarios, and
+the event dashboard.
+
+```bash
+pip install pyyaml websocket-client openai
+pip install -e .          # installs the orchestrator package
+cd orchestrator
+python -m orchestrator run -f examples/quickstart/scenario.yaml
+```
+
+To start the dashboard alongside it (requires Node 20+):
+
+```bash
+bash scripts/local-demo.sh
+```
+
+Or open this repo in [GitHub Codespaces](https://codespaces.new/Harrishayy/AgentOS) —
+the devcontainer sets everything up automatically.
+
+**Sandbox your existing agent in two lines:**
+
+```python
+from orchestrator import tool_tracer, emit_user_input, emit_agent_output
+
+@tool_tracer          # emits [TOOL]/[RESULT] events automatically
+def fetch_url(url: str) -> str:
+    return requests.get(url).text
+```
+
+**Switch models without touching your code** — set `model` and `provider`
+in your manifest and the orchestrator injects `MODEL`, `API_BASE_URL`,
+and `API_KEY` as env vars:
+
+```yaml
+model: claude-sonnet-4-6
+provider: anthropic
+```
+
+> **Local mode vs full stack:** The kernel-level sandbox policy
+> (eBPF enforcement, `EPERM` on denied syscalls) only activates in
+> full stack mode, which requires **Linux 6.8+**. See below.
+
+---
+
 ## Spin up the whole thing in 5 minutes
 
 You need a Linux 6.8+ environment. On a Mac, the recommended path is
