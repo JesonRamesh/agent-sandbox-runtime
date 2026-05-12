@@ -32,7 +32,7 @@ func authorizeIngest(conn net.Conn) error {
 		return fmt.Errorf("%w: inspect peer credentials: %v", ErrPermissionDeniedErr, controlErr)
 	}
 
-	if cred != nil && cred.Uid == uint32(os.Getuid()) {
+	if cred != nil && cred.Uid == uint32(os.Getuid()) { //nolint:gosec // UIDs always fit in uint32 on Linux
 		return nil
 	}
 	if allowed := os.Getenv("AGENT_SANDBOX_INGEST_UID"); allowed != "" {

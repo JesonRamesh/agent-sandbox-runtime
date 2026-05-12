@@ -335,8 +335,8 @@ func (d *daemon) RunAgent(_ context.Context, m ipc.Manifest) (string, error) {
 		"policy_id":   bh.PolicyID(),
 	})
 
-	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stdout", stdoutPipe)
-	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stderr", stderrPipe)
+	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stdout", stdoutPipe) //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
+	go d.streamAgentOutput(evtCtx, id, uint32(a.PID), "agent.stderr", stderrPipe) //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 	go d.streamBPFEvents(evtCtx, id, bh)
 	go d.waitAgent(a, res)
 
@@ -652,7 +652,7 @@ func (d *daemon) IngestEvent(_ context.Context, agentID string, event ipc.Ingest
 		Ts:      ts,
 		AgentID: agentID,
 		Type:    event.Type,
-		PID:     uint32(a.PID),
+		PID:     uint32(a.PID), //nolint:gosec // Linux PIDs bounded by kernel.pid_max (≤ 2^22)
 		Details: details,
 	})
 	return nil
