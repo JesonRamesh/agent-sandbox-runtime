@@ -305,6 +305,100 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(m.model_env_vars(), {})
 
 
+class MissingProviderHostsTests(unittest.TestCase):
+    def _manifest(self, **kwargs) -> "AgentManifest":
+        from orchestrator.manifest import AgentManifest
+        defaults = dict(
+            name="a",
+            command=["python"],
+            allowed_hosts=[],
+            allowed_paths=[],
+        )
+        defaults.update(kwargs)
+        return AgentManifest(**defaults)
+
+    def test_returns_empty_when_no_provider(self):
+        m = self._manifest()
+        self.assertEqual(m.missing_provider_hosts(), [])
+
+    def test_returns_host_for_anthropic_when_missing(self):
+        m = self._manifest(provider="anthropic")
+        self.assertEqual(m.missing_provider_hosts(), ["api.anthropic.com"])
+
+    def test_returns_empty_when_host_already_in_allowed_hosts(self):
+        m = self._manifest(provider="anthropic", allowed_hosts=["api.anthropic.com"])
+        self.assertEqual(m.missing_provider_hosts(), [])
+
+    def test_returns_host_for_openai_when_missing(self):
+        m = self._manifest(provider="openai")
+        self.assertEqual(m.missing_provider_hosts(), ["api.openai.com"])
+
+    def test_returns_host_for_cisco_when_missing(self):
+        m = self._manifest(provider="cisco")
+        self.assertEqual(m.missing_provider_hosts(), ["llm-proxy.dev.outshift.ai"])
+
+    def test_returns_host_from_explicit_base_url(self):
+        m = self._manifest(base_url="https://my-azure-proxy.example.com/v1")
+        self.assertEqual(m.missing_provider_hosts(), ["my-azure-proxy.example.com"])
+
+    def test_returns_empty_when_explicit_base_url_host_in_allowed_hosts(self):
+        m = self._manifest(
+            base_url="https://my-azure-proxy.example.com/v1",
+            allowed_hosts=["my-azure-proxy.example.com"],
+        )
+        self.assertEqual(m.missing_provider_hosts(), [])
+
+    def test_warning_logged_in_process_start_when_host_missing(self):
+        from orchestrator.manifest import AgentManifest
+        streamer = RecordingStreamer()
+
+        class UnavailableDaemon:
+            _available = False
+
+        manifest = AgentManifest(
+            name="warn-agent",
+            command=[sys.executable, "-c", ""],
+            allowed_hosts=[],
+            allowed_paths=[],
+            provider="anthropic",
+        )
+        agent = AgentProcess(manifest, streamer, UnavailableDaemon())
+        with self.assertLogs("orchestrator", level="WARNING") as log_ctx:
+            agent.start()
+            agent.wait(timeout=2)
+
+        self.assertTrue(
+            any("api.anthropic.com" in line for line in log_ctx.output),
+            f"Expected warning about api.anthropic.com, got: {log_ctx.output}",
+        )
+
+    def test_no_warning_when_host_present_in_allowed_hosts(self):
+        import logging
+        from orchestrator.manifest import AgentManifest
+        streamer = RecordingStreamer()
+
+        class UnavailableDaemon:
+            _available = False
+
+        manifest = AgentManifest(
+            name="ok-agent",
+            command=[sys.executable, "-c", ""],
+            allowed_hosts=["api.anthropic.com"],
+            allowed_paths=[],
+            provider="anthropic",
+        )
+        agent = AgentProcess(manifest, streamer, UnavailableDaemon())
+        with self.assertLogs("orchestrator", level="WARNING") as log_ctx:
+            logging.getLogger("orchestrator").warning("sentinel")
+            agent.start()
+            agent.wait(timeout=2)
+
+        self.assertFalse(
+            any("api.anthropic.com" in line for line in log_ctx.output),
+            f"Unexpected warning about api.anthropic.com: {log_ctx.output}",
+        )
+
+
 class ScenarioTests(unittest.TestCase):
     def test_load_scenario_resolves_manifest_paths_relative_to_scenario(self):
         with tempfile.TemporaryDirectory() as tmp:

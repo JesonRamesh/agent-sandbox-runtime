@@ -79,6 +79,14 @@ class AgentProcess:
         self._daemon_pid = None
         self._log_path = self._build_log_path()
         self._stream_threads = []
+        _missing_hosts = getattr(self.manifest, "missing_provider_hosts", lambda: [])
+        for host in _missing_hosts():
+            logger.warning(
+                "provider '%s' needs '%s' in allowed_hosts — "
+                "agent will be kernel-blocked on first LLM call",
+                self.manifest.provider or self.manifest.base_url,
+                host,
+            )
         if self._daemon and self._daemon._available:
             manifest = self.manifest
             model_vars = manifest.model_env_vars()

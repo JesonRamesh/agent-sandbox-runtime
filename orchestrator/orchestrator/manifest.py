@@ -63,6 +63,19 @@ class AgentManifest:
             return _PROVIDER_BASE_URLS.get(self.provider.lower())
         return None
 
+    def missing_provider_hosts(self) -> list[str]:
+        """Return provider hostnames implied by provider/base_url but absent from allowed_hosts."""
+        from urllib.parse import urlparse
+        base_url = self.resolved_base_url()
+        if not base_url:
+            return []
+        host = urlparse(base_url).hostname or ""
+        if not host:
+            return []
+        if host in self.allowed_hosts:
+            return []
+        return [host]
+
     def model_env_vars(self) -> dict[str, str]:
         """Return env vars to inject so agent code can read MODEL/API_BASE_URL/API_KEY."""
         import os
