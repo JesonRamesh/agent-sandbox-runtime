@@ -102,71 +102,47 @@ provider: anthropic
 
 ## Spin up the whole thing in 5 minutes
 
-You need a Linux 6.8+ environment. On a Mac, the recommended path is
-Lima (lightweight, native on Apple Silicon). All commands below
-assume you're starting from a fresh checkout of this repo.
+You need a Linux 6.8+ environment. The kernel enforcement only runs on
+Linux — the quickest path on a Mac is the one-command setup below.
 
-### Step 1 — boot a Linux VM (skip if you're already on Linux)
+### macOS — one command (Apple Silicon and Intel)
 
-**Apple Silicon Mac** (M1/M2/M3/M4):
-
-```bash
-brew install lima
-limactl start --name=agentsandbox \
-  --cpus=4 --memory=4 --disk=30 \
-  --mount-writable --mount=$(pwd) \
-  template:ubuntu-lts
-```
-
-**Intel Mac / Windows / other**:
+From the repo root:
 
 ```bash
-brew install vagrant       # macOS only
-vagrant up                  # uses the Vagrantfile in this repo
-vagrant ssh
+bash scripts/setup-lima.sh
 ```
 
-### Step 2 — open a shell inside the VM
+This installs Lima (via Homebrew if needed), boots an Ubuntu 24.04 VM,
+runs `scripts/setup-vm.sh` inside it to install all dependencies and
+activate the BPF LSM, reboots the VM if required, and builds the daemon.
+When it finishes it prints exactly what to run next.
+
+**Requires:** Homebrew and the repo checked out under your home directory.
+
+### Linux — manual setup
+
+On a native Linux 6.8+ machine or inside a VM you've already booted:
 
 ```bash
-limactl shell agentsandbox     # or: vagrant ssh
-cd /Users/<you>/Documents/AgentOS    # (Lima mounts your $HOME read-write at the same path)
+bash scripts/setup-vm.sh   # installs deps, activates BPF LSM (reboot if prompted)
+make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-### Step 3 — install dependencies + activate BPF LSM
+**Intel Mac / Windows (Vagrant):**
 
 ```bash
-bash scripts/setup-vm.sh
+brew install vagrant
+vagrant up && vagrant ssh
+# then run the Linux steps above inside the VM
 ```
 
-The script installs Go, Node, the eBPF toolchain, and verifies the
-BPF Linux Security Module is active. **If the script prints a yellow
-"REBOOT REQUIRED" banner**, run `sudo reboot`, log back in, and
-verify with:
+---
 
-```bash
-cat /sys/kernel/security/lsm | grep -o bpf
-# → bpf
-```
+All commands below assume the build is done and you are inside the Linux
+environment (VM shell or native Linux).
 
-This is the most important check. Without `bpf` in this list, every
-LSM hook will load but never fire — every policy decision will
-silently allow.
-
-### Step 4 — build everything
-
-```bash
-make all
-```
-
-Produces:
-
-- `bin/agentd` — the daemon
-- `bin/agentctl` — the CLI
-- `bin/test-client` — a raw IPC test client
-- `bpf/*.bpf.o` — the four eBPF programs
-
-### Step 5 — start the daemon (terminal #1)
+### Step 1 — start the daemon (terminal #1)
 
 ```bash
 sudo ./bin/agentd \
@@ -179,7 +155,7 @@ The daemon must run as root (or with `CAP_BPF + CAP_NET_ADMIN +
 CAP_SYS_ADMIN`) to load eBPF. It stays in the foreground; leave this
 terminal open. You'll see startup logs ending in `daemon listening`.
 
-### Step 6 — start the live dashboard (terminal #2, optional)
+### Step 2 — start the live dashboard (terminal #2, optional)
 
 ```bash
 bash viewer/scripts/start-viewer.sh
@@ -192,7 +168,7 @@ once you launch an agent. The viewer also spawns a small bridge
 process that subscribes to the daemon's event stream — so kernel
 events show up in the dashboard automatically.
 
-### Step 7 — run an agent (terminal #3)
+### Step 3 — run an agent (terminal #3)
 
 ```bash
 # A manifest with no allowed_hosts — every connect should be denied.
@@ -222,7 +198,7 @@ python -m orchestrator run -f examples/two_agent/scenario.yaml
 python -m orchestrator status
 ```
 
-### Step 8 — write your own manifest
+### Step 4 — write your own manifest
 
 ```yaml
 # my-agent.yaml

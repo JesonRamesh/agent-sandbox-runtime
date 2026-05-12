@@ -132,4 +132,4 @@ This is a bash scripting task, not an orchestrator code task.
 | 2 — Quickstart next-step message | ✅ Done |
 | 3 — Framework integration docs | ✅ Done |
 | 4 — Injection demo | ⏸ Deprioritised |
-| 5 — Mac full-stack one-liner | 🔲 Not started |
+| 5 — Mac full-stack one-liner | ✅ Done |
