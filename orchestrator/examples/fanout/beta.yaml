@@ -1,0 +1,9 @@
+name: beta-agent
+command: ["python", "examples/fanout/fanout_agent.py"]
+allowed_hosts:
+  - api.anthropic.com:443
+allowed_paths: []
+env:
+  AGENT_LABEL: beta
+  ALLOWED_HOSTS_LABEL: api.anthropic.com:443
+description: "Fanout agent with Anthropic-only network access."

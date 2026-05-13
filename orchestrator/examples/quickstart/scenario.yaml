@@ -1,0 +1,5 @@
+name: quickstart
+description: "Quickstart scenario — run with: python -m orchestrator run -f examples/quickstart/scenario.yaml"
+agents:
+  - id: quickstart
+    manifest: ./agent.yaml

@@ -13,7 +13,7 @@ import (
 	"sync"
 )
 
-// DefaultSocketPath is the on-disk address for the daemon socket. Brief §4
+// DefaultSocketPath is the on-disk address for the daemon socket. Brief section 4
 // pins this; only override in tests.
 const DefaultSocketPath = "/run/agent-sandbox.sock"
 
@@ -26,9 +26,10 @@ type Handler interface {
 	ListAgents(ctx context.Context) ([]AgentSummary, error)
 	AgentLogs(ctx context.Context, agentID string, tailN int) ([]Event, error)
 	// StreamEvents is long-lived. It calls sink(event) for each event.
-	// sink returning a non-nil error means the client went away — the
+	// sink returning a non-nil error means the client went away; the
 	// handler should clean up and return.
 	StreamEvents(ctx context.Context, agentID string, sink func(Event) error) error
+	IngestEvent(ctx context.Context, agentID string, event IngestEvent) error
 	DaemonStatus(ctx context.Context) (DaemonStatusResult, error)
 }
 
@@ -63,7 +64,7 @@ func NewServer(socketPath string, h Handler, log *slog.Logger) *Server {
 
 // Start creates the listener, ensures the parent directory exists, and
 // chmods the socket to 0600. If a stale socket file is present from a prior
-// crash we unlink it — but log a warning first so an admin notices repeated
+// crash we unlink it, but log a warning first so an admin notices repeated
 // crashes.
 func (s *Server) Start() error {
 	parent := filepath.Dir(s.socketPath)
@@ -81,7 +82,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("listen unix %s: %w", s.socketPath, err)
 	}
-	// chmod after listen — Listen creates the inode, so we need the file
+	// chmod after listen: Listen creates the inode, so we need the file
 	// to exist before chmod can find it.
 	if err := os.Chmod(s.socketPath, 0o600); err != nil {
 		_ = l.Close()
@@ -98,7 +99,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	if s.listener == nil {
 		return errors.New("ipc server: Start must be called before Serve")
 	}
-	// Closing the listener is how we unblock Accept on shutdown — the
+	// Closing the listener is how we unblock Accept on shutdown; the
 	// goroutine below watches ctx and triggers it.
 	go func() {
 		<-ctx.Done()
@@ -192,6 +193,8 @@ func (s *Server) handleConn(ctx context.Context, c net.Conn) {
 		s.handleAgentLogs(reqCtx, c, req, logger)
 	case MethodStreamEvents:
 		s.handleStreamEvents(reqCtx, c, req, logger)
+	case MethodIngestEvent:
+		s.handleIngestEvent(reqCtx, c, req, logger)
 	case MethodDaemonStatus:
 		s.handleDaemonStatus(reqCtx, c, logger)
 	default:
@@ -294,14 +297,41 @@ func (s *Server) handleStreamEvents(ctx context.Context, c net.Conn, req Request
 		return WriteOK(c, e)
 	}
 	if err := s.handler.StreamEvents(ctx, p.AgentID, sink); err != nil {
-		// Peer disconnect is the common case — log at debug. Other
-		// errors get a real error log.
+		// Peer disconnect is the common case; log at debug. Other
+		// errors get a real warning log.
 		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
 			logger.Debug("stream ended", slog.String("err", err.Error()))
 			return
 		}
 		logger.Warn("stream ended with error", slog.String("err", err.Error()))
 	}
+}
+
+func (s *Server) handleIngestEvent(ctx context.Context, c net.Conn, req Request, logger *slog.Logger) {
+	if err := authorizeIngest(c); err != nil {
+		code := CodeForError(err)
+		logger.Warn("IngestEvent unauthorized", slog.String("code", code), slog.String("err", err.Error()))
+		_ = WriteErr(c, code, err.Error())
+		return
+	}
+
+	var p IngestEventParams
+	if err := json.Unmarshal(req.Params, &p); err != nil {
+		_ = WriteErr(c, ErrInvalidManifest, fmt.Sprintf("decode params: %v", err))
+		return
+	}
+	logger = logger.With(
+		slog.String("agent_id", p.AgentID),
+		slog.String("phase", "ingest"),
+		slog.String("event_type", p.Event.Type),
+	)
+	if err := s.handler.IngestEvent(ctx, p.AgentID, p.Event); err != nil {
+		code := CodeForError(err)
+		logger.Error("IngestEvent failed", slog.String("code", code), slog.String("err", err.Error()))
+		_ = WriteErr(c, code, err.Error())
+		return
+	}
+	_ = WriteOK(c, struct{}{})
 }
 
 func (s *Server) handleDaemonStatus(ctx context.Context, c net.Conn, logger *slog.Logger) {

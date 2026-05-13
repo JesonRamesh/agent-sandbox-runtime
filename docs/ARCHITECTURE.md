@@ -613,30 +613,49 @@ without spinning up a real kernel.
 
 ### P4 — Orchestrator (`orchestrator/`)
 
-The orchestrator is the LLM-driven half of the demo. It's Python so
-it can use the OpenAI SDK directly. Key files:
+The orchestrator is the developer-facing Python entry point. It owns
+the `from orchestrator import Orchestrator` API, the
+`python -m orchestrator run|validate|status` CLI, multi-agent
+scenario coordination, and the prompt-injection demo assets.
 
-- `demo_agent.py`: the agent. A trivial tool loop that supports one
-  function (`fetch_url`) and prints `[TOOL]` markers to stdout
-  whenever it makes a call.
-- `demo_launcher.py`: spawns the agent, parses its stdout,
-  optionally talks to the daemon to convert tool calls into
-  `IngestEvent` RPCs (so kernel and LLM events share an `agent_id`).
-- `evil_server.py`: a tiny HTTP server that serves a
-  prompt-injection payload disguised as benign market data. Used to
-  reproduce a real injection attack in a controlled VM.
-- `orchestrator/`: the core package — state machine, policy hooks,
-  daemon RPC bindings.
+The subtree is split into:
+
+- `orchestrator/orchestrator/`: the core package (`core.py`,
+  `process.py`, `runner.py`, `scenario.py`, `cli.py`, `daemon.py`,
+  `events.py`, `manifest.py`).
+- `orchestrator/examples/`: runnable sample scenarios such as
+  `two_agent/` and `prompt_injection/`.
+- `orchestrator/tests/`: P4-side unit coverage for CLI, manifest and
+  scenario parsing, daemon-mode lifecycle tracking, and stdout event
+  ingestion.
+
+The CLI is the fastest path for a developer:
+
+```bash
+cd orchestrator
+python -m orchestrator validate -f examples/two_agent/scenario.yaml
+python -m orchestrator run -f examples/two_agent/scenario.yaml
+python -m orchestrator status
+```
+
+Scenario YAML is the P4 abstraction that coordinates multiple
+single-agent manifests. Each scenario agent points at a manifest and
+can declare `depends_on` plus `launch_when: success|complete`, so a
+handoff pipeline or simple fan-out can be expressed without bespoke
+Python glue.
 
 The orchestrator runs in two modes:
 
 | Mode      | What it does                                                         |
 |-----------|----------------------------------------------------------------------|
 | **stub**  | No daemon. Spawns the agent via `subprocess.Popen`. Used for dev.    |
-| **daemon**| Calls `RunAgent` over IPC. The kernel actually enforces.             |
+| **daemon**| Calls `RunAgent` over IPC. Tracks lifecycle via `StreamEvents`, parses `agent.stdout` / `agent.stderr`, and pushes semantic `llm.*` events back via `IngestEvent`. |
 
-The `[TOOL]` parsing is the same in both modes; only the spawn path
-differs.
+The prompt-injection demo now lives under
+`orchestrator/examples/prompt_injection/`: `demo_agent.py` prints
+`[TOOL]` / `[RESULT]` markers, `demo_launcher.py` runs the agent,
+and `evil_server.py` serves the hostile page used to show a successful
+model hijack and a blocked kernel action side by side in the viewer.
 
 ### P5 — Viewer (`viewer/`)
 

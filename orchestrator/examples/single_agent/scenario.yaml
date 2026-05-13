@@ -1,0 +1,5 @@
+name: single-agent-demo
+description: "Smallest possible orchestrator scenario: one manifest, no dependencies."
+agents:
+  - id: single
+    manifest: ./agent.yaml

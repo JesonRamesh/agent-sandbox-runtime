@@ -51,73 +51,129 @@ context, on the dashboard).
 
 ---
 
+## Try it now — any OS, no VM required
+
+The orchestrator, model selection, and live dashboard work on **Mac,
+Windows, and Linux** without a Linux VM. In local mode the agent runs
+as a normal process — the kernel enforcement is inactive, but everything
+else works: tool tracing, model switching, multi-agent scenarios, and
+the event dashboard.
+
+```bash
+pip install pyyaml websocket-client openai
+pip install -e .          # installs the orchestrator package
+cd orchestrator
+python -m orchestrator run -f examples/quickstart/scenario.yaml
+```
+
+To start the dashboard alongside it (requires Node 20+):
+
+```bash
+bash scripts/local-demo.sh
+```
+
+Or open this repo in [GitHub Codespaces](https://codespaces.new/Harrishayy/AgentOS) —
+the devcontainer sets everything up automatically.
+
+**Sandbox your existing agent in two lines:**
+
+```python
+from orchestrator import tool_tracer, emit_user_input, emit_agent_output
+
+@tool_tracer          # emits [TOOL]/[RESULT] events automatically
+def fetch_url(url: str) -> str:
+    return requests.get(url).text
+```
+
+**Switch models without touching your code** — set `model` and `provider`
+in your manifest and the orchestrator injects `MODEL`, `API_BASE_URL`,
+and `API_KEY` as env vars:
+
+```yaml
+model: claude-sonnet-4-6
+provider: anthropic
+```
+
+> **Local mode vs full stack:** The kernel-level sandbox policy
+> (eBPF enforcement, `EPERM` on denied syscalls) only activates in
+> full stack mode, which requires **Linux 6.8+**. See below.
+
+---
+
 ## Spin up the whole thing in 5 minutes
 
-You need a Linux 6.8+ environment. On a Mac, the recommended path is
-Lima (lightweight, native on Apple Silicon). All commands below
-assume you're starting from a fresh checkout of this repo.
+You need a Linux 6.8+ environment. The kernel enforcement only runs on
+Linux — the quickest path on a Mac is the one-command setup below.
 
-### Step 1 — boot a Linux VM (skip if you're already on Linux)
+### macOS — one command (Apple Silicon and Intel)
 
-**Apple Silicon Mac** (M1/M2/M3/M4):
-
-```bash
-brew install lima
-limactl start --name=agentsandbox \
-  --cpus=4 --memory=4 --disk=30 \
-  --mount-writable --mount=$(pwd) \
-  template:ubuntu-lts
-```
-
-**Intel Mac / Windows / other**:
+From the repo root:
 
 ```bash
-brew install vagrant       # macOS only
-vagrant up                  # uses the Vagrantfile in this repo
-vagrant ssh
+bash scripts/setup-lima.sh
 ```
 
-### Step 2 — open a shell inside the VM
+This installs Lima (via Homebrew if needed), boots an Ubuntu 24.04 VM,
+runs `scripts/setup-vm.sh` inside it to install all dependencies and
+activate the BPF LSM, reboots the VM if required, and builds the daemon.
+When it finishes it prints exactly what to run next.
+
+**Requires:** Homebrew and the repo checked out under your home directory.
+
+### Windows — GitHub Codespaces (recommended)
+
+The kernel enforcement layer requires a real Linux kernel. WSL 2 uses
+Microsoft's custom kernel and cannot activate the BPF LSM — so on Windows,
+**Codespaces is the recommended path** for full enforcement.
+
+Click **Code → Codespaces → Create codespace on main** in the GitHub UI,
+or open directly:
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Harrishayy/AgentOS)
+
+The devcontainer runs Ubuntu with a 6.8+ kernel. Once the codespace is
+ready, run:
 
 ```bash
-limactl shell agentsandbox     # or: vagrant ssh
-cd /Users/<you>/Documents/AgentOS    # (Lima mounts your $HOME read-write at the same path)
+bash scripts/setup-vm.sh   # activates BPF LSM, installs any remaining deps
+make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-### Step 3 — install dependencies + activate BPF LSM
+The dashboard at `http://127.0.0.1:8765` is forwarded to your Windows
+browser automatically via Codespaces port forwarding.
+
+> **WSL 2 (local mode only):** If you only want to explore the orchestrator,
+> tool tracing, and dashboard without kernel enforcement, WSL 2 works —
+> run `bash scripts/setup-vm.sh && make all` inside WSL. The script will
+> detect WSL and explain what's unavailable.
+
+### Linux
+
+On a native Linux 6.8+ machine:
 
 ```bash
-bash scripts/setup-vm.sh
+bash scripts/setup-vm.sh   # installs deps, activates BPF LSM (reboot if prompted)
+make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-The script installs Go, Node, the eBPF toolchain, and verifies the
-BPF Linux Security Module is active. **If the script prints a yellow
-"REBOOT REQUIRED" banner**, run `sudo reboot`, log back in, and
-verify with:
+### Vagrant / VirtualBox (optional alternative)
+
+If you specifically want VirtualBox rather than WSL or Lima:
 
 ```bash
-cat /sys/kernel/security/lsm | grep -o bpf
-# → bpf
+bash scripts/setup-vagrant.sh
 ```
 
-This is the most important check. Without `bpf` in this list, every
-LSM hook will load but never fire — every policy decision will
-silently allow.
+Requires [Vagrant](https://developer.hashicorp.com/vagrant/downloads) and
+[VirtualBox](https://www.virtualbox.org/wiki/Downloads). Run from Git Bash
+on Windows.
 
-### Step 4 — build everything
+---
 
-```bash
-make all
-```
+All commands below assume the build is done and you are inside the Linux
+environment (VM shell or native Linux).
 
-Produces:
-
-- `bin/agentd` — the daemon
-- `bin/agentctl` — the CLI
-- `bin/test-client` — a raw IPC test client
-- `bpf/*.bpf.o` — the four eBPF programs
-
-### Step 5 — start the daemon (terminal #1)
+### Step 1 — start the daemon (terminal #1)
 
 ```bash
 sudo ./bin/agentd \
@@ -130,7 +186,7 @@ The daemon must run as root (or with `CAP_BPF + CAP_NET_ADMIN +
 CAP_SYS_ADMIN`) to load eBPF. It stays in the foreground; leave this
 terminal open. You'll see startup logs ending in `daemon listening`.
 
-### Step 6 — start the live dashboard (terminal #2, optional)
+### Step 2 — start the live dashboard (terminal #2, optional)
 
 ```bash
 bash viewer/scripts/start-viewer.sh
@@ -143,7 +199,7 @@ once you launch an agent. The viewer also spawns a small bridge
 process that subscribes to the daemon's event stream — so kernel
 events show up in the dashboard automatically.
 
-### Step 7 — run an agent (terminal #3)
+### Step 3 — run an agent (terminal #3)
 
 ```bash
 # A manifest with no allowed_hosts — every connect should be denied.
@@ -165,8 +221,15 @@ For a complete smoke test that asserts both verdicts in one go:
 ```bash
 sudo bash examples/test-it.sh
 ```
+### Or use the orchestrator
 
-### Step 8 — write your own manifest
+```bash
+cd orchestrator
+python -m orchestrator run -f examples/two_agent/scenario.yaml
+python -m orchestrator status
+```
+
+### Step 4 — write your own manifest
 
 ```yaml
 # my-agent.yaml
@@ -223,6 +286,7 @@ limactl delete agentsandbox
 | [`docs/INTERFACES.md`](docs/INTERFACES.md)              | Wire-protocol reference: IPC framing, RPC methods, event schemas. |
 | [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md)          | What we defend against, what we don't, operator assumptions.    |
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)            | How to build, test, and contribute.                             |
+| [`docs/RECIPES.md`](docs/RECIPES.md)                    | Common manifest and orchestrator patterns.                      |
 | [`docs/operations.md`](docs/operations.md)              | Running the daemon as a long-lived systemd service.             |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                    | Branch and commit conventions, PR checklist.                    |
 

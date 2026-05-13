@@ -1,0 +1,5 @@
+name: code-exec-demo
+description: One agent that writes a file via a child Python process.
+agents:
+  - id: exec
+    manifest: ./exec-agent.yaml

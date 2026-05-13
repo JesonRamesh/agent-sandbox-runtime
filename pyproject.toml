@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-sandbox-orchestrator"
+version = "0.1.0"
+description = "Python orchestrator for the agent-sandbox runtime"
+readme = "orchestrator/README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "PyYAML>=6.0",
+  "websocket-client>=1.8.0",
+]
+license = { text = "Apache-2.0" }
+authors = [
+  { name = "Agent Sandbox Runtime contributors" },
+]
+
+[project.scripts]
+orchestrator = "orchestrator.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "orchestrator" }
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["orchestrator"]
+include = ["orchestrator*"]
+
+[tool.setuptools.package-data]
+orchestrator = ["schema/*.json"]

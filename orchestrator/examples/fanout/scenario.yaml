@@ -1,0 +1,9 @@
+name: fanout-demo
+description: Launch three independent agents in parallel.
+agents:
+  - id: alpha
+    manifest: ./alpha.yaml
+  - id: beta
+    manifest: ./beta.yaml
+  - id: gamma
+    manifest: ./gamma.yaml

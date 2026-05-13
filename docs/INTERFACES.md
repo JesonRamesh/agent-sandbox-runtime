@@ -173,10 +173,26 @@ fanout pipeline so they share the same `agent_id` namespace as kernel
 events.
 
 **Request**: `{ "event": <Event> }`
+Example:
+
+```json
+{
+  "agent_id": "agt_a1b2c3d4",
+  "event": {
+    "type": "llm.tool_call",
+    "ts": "2026-05-11T12:00:00.000000Z",
+    "details": {
+      "tool": "fetch_url",
+      "args": { "url": "https://example.com" }
+    }
+  }
+}
+```
+
 **Result**:  `{}`
 
-The daemon does not persist these in the registry; it only forwards
-them to subscribers.
+The daemon rejects non-`llm.*` event types. It does not persist these
+in the registry; it only forwards them to subscribers.
 
 ### 3.7 DaemonStatus
 
@@ -232,12 +248,18 @@ Common header fields the daemon adds: `cgroup_id`, `comm`, `tgid`,
 
 Synthesized by the daemon, not the kernel:
 
-| `type`            | When emitted                                           |
-|-------------------|--------------------------------------------------------|
-| `agent.started`   | After `cmd.Start()` succeeds                           |
-| `agent.exited`    | When `cmd.Wait()` returns nil                          |
-| `agent.crashed`   | When `cmd.Wait()` returns a non-nil error              |
-| `agent.kill_requested` | When StopAgent has been called                    |
+| `type`                 | When emitted                                | Key `details` fields |
+|------------------------|---------------------------------------------|----------------------|
+| `agent.started`        | After `cmd.Start()` succeeds                | none                 |
+| `agent.exited`         | When `cmd.Wait()` returns nil               | `exit_code`          |
+| `agent.crashed`        | When `cmd.Wait()` returns a non-nil error   | `exit_code`          |
+| `agent.kill_requested` | When StopAgent has been called              | none                 |
+| `agent.stdout`         | For each stdout line emitted by the agent   | `line`, `truncated`  |
+| `agent.stderr`         | For each stderr line emitted by the agent   | `line`, `truncated`  |
+
+`agent.stdout` and `agent.stderr` preserve agent text as line-oriented
+events so alternate dashboards and orchestrators can parse semantic
+markers without shelling out to `agentctl logs`.
 
 ### 4.3 Orchestrator events
 
@@ -246,8 +268,14 @@ Pushed by the orchestrator via `IngestEvent`:
 | `type`            | `details` fields                                            |
 |-------------------|-------------------------------------------------------------|
 | `llm.tool_call`   | `tool` (name), `args` (JSON), `request_id` (model-supplied) |
-| `llm.stdout`      | `line` (single output line, max 4 KiB)                      |
+| `llm.tool_result` | `tool`, `ok`, `request_id`, plus tool-specific result data  |
+| `llm.user_input`  | `text`                                                      |
+| `llm.agent_output`| `text`                                                      |
 | `llm.injection_suspected` | `confidence`, `reason`                              |
+
+Raw stdout/stderr stays in `agent.stdout` / `agent.stderr`. The
+orchestrator only ingests parsed semantic events back into the daemon
+to avoid a self-referential loop.
 
 ---
 

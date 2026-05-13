@@ -1,0 +1,36 @@
+name: quickstart-agent
+description: "Quickstart agent. Works in local mode on any OS. Add model/provider for real LLM calls."
+
+# --- Model selection (optional) -----------------------------------
+# Uncomment ONE block to use a real LLM. The orchestrator injects
+# MODEL, API_BASE_URL, and API_KEY as env vars automatically.
+# Also uncomment the matching host in allowed_hosts below.
+#
+# OpenAI:
+# model: gpt-4o
+# provider: openai
+#
+# Anthropic:
+# model: claude-sonnet-4-6
+# provider: anthropic
+#
+# Cisco / Outshift proxy (team dev environment — no API key needed):
+# model: azure/gpt-5.4
+# provider: cisco
+# ------------------------------------------------------------------
+
+command: ["python", "examples/quickstart/agent.py"]
+
+env:
+  # Ensures 'from orchestrator import ...' works when running from the
+  # orchestrator/ directory without a global pip install.
+  PYTHONPATH: "."
+
+allowed_hosts:
+  # Uncomment the line matching your provider above:
+  # - api.openai.com              # openai
+  # - api.anthropic.com           # anthropic
+  # - llm-proxy.dev.outshift.ai   # cisco (team dev proxy)
+  []
+
+allowed_paths: []

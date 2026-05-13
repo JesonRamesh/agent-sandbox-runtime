@@ -1,0 +1,7 @@
+name: single-agent
+command: ["python", "examples/single_agent/agent.py"]
+allowed_hosts: []
+allowed_paths: []
+env:
+  AGENT_NAME: single-agent
+description: "Minimal local-only orchestrator example."
