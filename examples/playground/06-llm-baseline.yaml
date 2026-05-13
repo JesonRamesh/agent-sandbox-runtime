@@ -1,0 +1,37 @@
+# LLM-driven baseline scenario.
+#
+# Sandboxes the orchestrator's run_llm_agent.py: a real chat-completions
+# call against the configured LLM proxy. The model is given a prompt that
+# asks it to fetch http://example.com, which IS in the allow-list, so the
+# whole chain succeeds end-to-end and the workflow tab shows
+#   user_input → tool_call(fetch_url) → ALLOW → tool_result → agent_output.
+#
+# Why example.com and not a numeric IP: the LLM proxy's WAF rejects
+# requests whose prompt content contains literal `http://N.N.N.N` strings
+# (an SSRF-pattern moderation rule on litellm's side). Hostnames are
+# fine, and they're more realistic for an actual agent task anyway.
+#
+# Credentials come from orchestrator/.env via python-dotenv (gitignored);
+# never bake them into a manifest. allowed_paths is "/" because the python
+# stack pulls in many runtime files (interpreter, openai SDK, certs, etc.)
+# — for a more restrictive demo we'd enumerate them, but that is a deeper
+# manifest exercise than this scenario is trying to demonstrate.
+name: scenario-6-llm-baseline
+description: "LLM agent permitted to fetch example.com — happy-path chain."
+mode: enforce
+command:
+  - /usr/bin/python3
+  - /home/vagrant/agentsandbox/orchestrator/run_llm_agent.py
+env:
+  AGENT_TASK: "Use your fetch_url tool to retrieve http://example.com and tell me the page title in one sentence."
+  AGENT_NAME: scenario-6-llm-baseline
+allowed_hosts:
+  - llm-proxy.dev.outshift.ai:443  # the chat-completions endpoint
+  - 127.0.0.1:8765                  # the viewer relay this agent publishes events to
+  - example.com:80                  # the URL the LLM is asked to fetch
+  - 127.0.0.53:53                   # systemd-resolved stub (glibc resolver) — required for DNS
+allowed_paths:
+  - /
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps: []

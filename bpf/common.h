@@ -116,11 +116,37 @@ struct policy {
     __u32 n_hosts;
     __u32 n_paths;
     __u32 n_bins;
+    // When non-zero the kernel denies any TCP connect() whose destination
+    // port is not in the TLS_PORTS set below. This makes "no credentials
+    // leave the host in plaintext" a structural property: cleartext
+    // egress is denied outright; the .env-loaded API key can only travel
+    // inside a TLS record, where the wire payload is encrypted.
+    __u32 deny_cleartext_egress;
+    __u32 _pad_dce;              // explicit pad so the __u64 below stays 8-aligned
     __u64 forbidden_caps;        // bitmask, e.g. (1<<CAP_SYS_ADMIN)
     struct host_rule   hosts[MAX_HOSTS];
     struct path_rule   paths[MAX_PATHS];
     struct binary_rule bins[MAX_BINARIES];
 };
+
+// Destinations the kernel treats as encrypted. Anything else triggers a
+// cleartext-egress deny when `deny_cleartext_egress` is set. We list the
+// common transport-encrypted ports here; teams that need to authorise a
+// non-TLS port for one specific service should leave the flag off for
+// that agent.
+//   443  HTTPS
+//   465  SMTPS
+//   587  SMTP submission (STARTTLS)
+//   636  LDAPS
+//   993  IMAPS
+//   995  POP3S
+//   8443 HTTPS-alt
+//   22   SSH (always encrypted)
+//   5223 XMPP-over-TLS
+#define IS_TLS_PORT(p)  \
+    ((p) == 443 || (p) == 465 || (p) == 587 || (p) == 636 ||    \
+     (p) == 993 || (p) == 995 || (p) == 8443 ||                 \
+     (p) == 22 || (p) == 5223)
 
 struct {
     __uint(type, BPF_MAP_TYPE_ARRAY);

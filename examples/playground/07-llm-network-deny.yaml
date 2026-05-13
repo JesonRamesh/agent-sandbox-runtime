@@ -1,0 +1,34 @@
+# LLM-driven network-deny scenario.
+#
+# Same sandboxed orchestrator as scenario-6, but the LLM is asked to
+# fetch a hostname that is *explicitly NOT* in the allow-list. The chat-
+# completions endpoint and the viewer relay ARE allowed so the agent can
+# still talk to the model and publish progress events. When the LLM
+# decides to call fetch_url, the kernel denies the connect() and the
+# workflow tab shows
+#   user_input → tool_call(fetch_url) → BLOCK → tool_result(error) → agent_output(failure)
+# i.e. the kernel catches the action even though the LLM was happy to
+# take it. This is the core "policy-below-the-agent" demo.
+#
+# Why a hostname rather than a numeric IP for the prompt: see the comment
+# in 06-llm-baseline.yaml — the upstream WAF rejects http://N.N.N.N
+# strings as a built-in SSRF moderation rule.
+name: scenario-7-llm-network-deny
+description: "LLM agent told to fetch example.com; the kernel blocks the connect even though the model agreed."
+mode: enforce
+command:
+  - /usr/bin/python3
+  - /home/vagrant/agentsandbox/orchestrator/run_llm_agent.py
+env:
+  AGENT_TASK: "Use your fetch_url tool to retrieve http://example.com and report the page contents. If the tool returns an error, summarise the error in one sentence so the user understands what happened."
+  AGENT_NAME: scenario-7-llm-network-deny
+allowed_hosts:
+  - llm-proxy.dev.outshift.ai:443  # talking to the model itself is allowed
+  - 127.0.0.1:8765                  # relay publishing
+  - 127.0.0.53:53                   # systemd-resolved stub — required for the agent's own DNS
+  # NOTE: example.com:80 deliberately omitted — the kernel must deny the fetch.
+allowed_paths:
+  - /
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps: []

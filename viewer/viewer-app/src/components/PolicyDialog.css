@@ -1,0 +1,243 @@
+/* ── PolicyDialog ────────────────────────────────────────────────────────── */
+
+.pd {
+  /* Reset browser defaults */
+  padding: 0;
+  border: none;
+  background: transparent;
+  width: min(580px, 92vw);
+  max-height: 90vh;
+  overflow: visible;
+  border-radius: 12px;
+}
+
+/* Backdrop — opaque enough to clearly separate the dialog from the page
+   underneath. The previous 0.65 alpha combined with the form's near-
+   invisible 0.07 white gradient made every input read as a faint outline.
+   We dial both the backdrop and the form panel up to readable opacities. */
+.pd::backdrop {
+  background: rgba(0, 0, 0, 0.80);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* Inner form card */
+.pd form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  /* Solid dark panel that matches the rest of the v2 chrome (var(--bg-panel)
+     with a fallback for older themes). Drops the backdrop-filter blur — it
+     does nothing useful over an already-opaque dark backdrop and only adds
+     GPU cost. */
+  background: var(--bg-panel, #14171c);
+  border: 1px solid var(--border-subtle, rgba(255,255,255,0.16));
+  border-top: 1px solid var(--border-active, rgba(255,255,255,0.28));
+  border-radius: 12px;
+  padding: 20px 22px 18px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.65), inset 0 1px 0 rgba(255,255,255,0.06);
+  overflow-y: auto;
+  max-height: 90vh;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.pd__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.pd__title {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
+}
+
+.pd__close {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms, border-color 150ms;
+}
+
+.pd__close:hover {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.35);
+  color: var(--accent-crimson);
+}
+
+/* ── Error banner ─────────────────────────────────────────────────────────── */
+
+.pd__error {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent-crimson);
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* ── Row (side-by-side labels) ───────────────────────────────────────────── */
+
+.pd__row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.pd__label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.pd__label--grow {
+  flex: 1;
+}
+
+.pd__hint {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-muted);
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: -3px;
+}
+
+/* ── Inputs ──────────────────────────────────────────────────────────────── */
+
+.pd__input,
+.pd__select,
+.pd__textarea {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 10px;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  width: 100%;
+  resize: vertical;
+}
+
+.pd__input:focus,
+.pd__select:focus,
+.pd__textarea:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.pd__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pd__select option {
+  background: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+.pd__textarea {
+  line-height: 1.6;
+  min-height: 60px;
+}
+
+/* Checkbox-style label — the deny_cleartext_egress toggle. The hint
+   sits below the field name on its own line, mirroring the textarea
+   labels above. */
+.pd__label--checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.pd__label--checkbox input[type='checkbox'] {
+  margin-top: 3px;
+  accent-color: var(--accent-emerald, #10b981);
+  cursor: pointer;
+}
+.pd__label--checkbox > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.pd__label--checkbox .pd__hint {
+  margin-top: 0;
+  font-weight: 400;
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+
+.pd__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.pd__btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 7px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.pd__btn--cancel {
+  border: 1px solid var(--border-subtle);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+}
+
+.pd__btn--cancel:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: var(--border-active);
+  color: var(--text-primary);
+}
+
+.pd__btn--save {
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--accent-blue);
+}
+
+.pd__btn--save:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.25);
+  border-color: rgba(59, 130, 246, 0.55);
+}
+
+.pd__btn--save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
