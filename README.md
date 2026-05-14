@@ -15,7 +15,7 @@ dashboard.
 > provides **no kernel-level security enforcement**.
 
 ```
-  agentctl run my-agent.yaml
+  agentctl run -f my-agent.yaml
               │
               ▼
        agentd daemon  ──── creates a sandbox, loads the policy
@@ -28,7 +28,7 @@ dashboard.
                                      manifest, deny everything else
 ```
 
-> **GitHub repo:** [JesonRamesh/agent-sandbox-runtime](https://github.com/JesonRamesh/agent-sandbox-runtime)
+> **GitHub repo:** [Harrishayy/AgentOS](https://github.com/Harrishayy/AgentOS)
 
 ## What this is for
 
@@ -84,13 +84,13 @@ python -m orchestrator run -f examples/quickstart/scenario.yaml
 > [`docs/RECIPES.md`](docs/RECIPES.md) for framework-specific examples
 > (OpenAI SDK, Anthropic Claude SDK, LangChain).
 
-To start the dashboard alongside it (requires Node 22+):
+To start the dashboard alongside it (requires Node 20+):
 
 ```bash
 bash scripts/local-demo.sh
 ```
 
-Or open this repo in [GitHub Codespaces](https://codespaces.new/JesonRamesh/agent-sandbox-runtime) —
+Or open this repo in [GitHub Codespaces](https://codespaces.new/Harrishayy/AgentOS) —
 the devcontainer installs all dependencies automatically for local-mode
 development (orchestrator, tool tracing, dashboard — **no kernel
 enforcement, no sandbox security**).
@@ -154,7 +154,7 @@ dashboard work; kernel-level `EPERM` enforcement does not).
 
 **Local mode via Codespaces** — the fastest path to explore:
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/JesonRamesh/agent-sandbox-runtime)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Harrishayy/AgentOS)
 
 The devcontainer installs Python, Node, and all orchestrator
 dependencies. Once the codespace is ready:
@@ -217,7 +217,7 @@ sudo ./bin/agentd \
 ```
 
 The daemon must run as root (or with `CAP_BPF + CAP_NET_ADMIN +
-CAP_SYS_ADMIN`) to load eBPF. It stays in the foreground; leave this
+CAP_SYS_ADMIN + CAP_SYS_RESOURCE`) to load eBPF. It stays in the foreground; leave this
 terminal open. You'll see startup logs ending in `daemon listening`.
 
 ### Step 2 — start the live dashboard (terminal #2, optional)
@@ -352,7 +352,6 @@ vagrant destroy -f
 | [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)            | How to build, test, and contribute.                             |
 | [`docs/RECIPES.md`](docs/RECIPES.md)                    | Common manifest patterns, model/provider switching, framework integration (OpenAI, Anthropic, LangChain). |
 | [`docs/operations.md`](docs/operations.md)              | Running the daemon as a long-lived systemd service + CI runner pattern. |
-| [`docs/P4_HANDOFF.md`](docs/P4_HANDOFF.md)              | Known issues and remaining engineering work.                    |
 | [`CONTRIBUTING.md`](CONTRIBUTING.md)                    | Branch and commit conventions, PR checklist.                    |
 | [`orchestrator/README.md`](orchestrator/README.md)      | Orchestrator-specific API, scenario format, daemon-mode details.|
 | [`viewer/README.md`](viewer/README.md)                  | Viewer architecture, event schemas, mock sender usage.          |
@@ -367,15 +366,16 @@ vagrant destroy -f
 - `CONFIG_BPF_LSM=y` **and** `bpf` in the runtime `lsm=` cmdline
   (`scripts/setup-vm.sh` handles this automatically)
 - cgroup v2 unified hierarchy (Ubuntu 24.04 default)
-- Go 1.23+, Node 22+, Python 3.10+
-- For production: `CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN` on the
-  daemon. The systemd unit in [`deploy/systemd/`](deploy/systemd/)
-  grants exactly those.
+- Go 1.23+, Node 20+, Python 3.10+
+- For production: `CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN`, and
+  `CAP_SYS_RESOURCE` on the daemon. The systemd unit in
+  [`deploy/systemd/`](deploy/systemd/) grants those capabilities.
 
 **Local mode (any OS — orchestrator + dashboard only, NO security enforcement):**
 
 - Python 3.10+ and `pip install pyyaml websocket-client`
-- Node 22+ (for the viewer dashboard)
+- Node 20+ (for the viewer dashboard; Node 22+ is only needed for the
+  optional `viewer/scripts/mock_kernel_sender.js` helper)
 - No Linux VM, no root, no special kernel
 - ⚠️ Agents run unsandboxed — local mode is for development/demo only
 
@@ -409,8 +409,7 @@ vagrant destroy -f
   native Linux host or a VM (Lima, Vagrant, cloud).
 
 See [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md) for the full threat
-model and [`docs/P4_HANDOFF.md`](docs/P4_HANDOFF.md) for open engineering
-issues.
+model.
 
 ## License
 
