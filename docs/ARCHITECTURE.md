@@ -200,10 +200,10 @@ god-mode bit into ~40 finer-grained **capabilities**:
 | `CAP_SYS_PTRACE`  | Inspect and modify other processes               |
 | ...               |                                                  |
 
-A process can hold a subset. Our daemon needs **just three**:
-`CAP_BPF`, `CAP_NET_ADMIN`, and `CAP_SYS_ADMIN`. It does not run as
+A process can hold a subset. Our daemon needs **four**:
+`CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN`, and `CAP_SYS_RESOURCE`. It does not run as
 uid 0 once installed via systemd; it runs as a dedicated `agent-sandbox`
-user with those three caps granted ambient. That's the principle of
+user with those four caps granted ambient. That's the principle of
 least privilege made operational.
 
 Sandboxed agents typically run with **fewer** capabilities than their
@@ -574,7 +574,7 @@ The daemon is the user-space referee. It owns:
 - **Per-agent registry** (`internal/registry`): in-memory map of
   agent_id → live process state, cleaned up on exit.
 
-The daemon must run with `CAP_BPF + CAP_NET_ADMIN + CAP_SYS_ADMIN`.
+The daemon must run with `CAP_BPF + CAP_NET_ADMIN + CAP_SYS_ADMIN + CAP_SYS_RESOURCE`.
 See `deploy/systemd/agent-sandbox.service` for the systemd unit that
 grants exactly those.
 
@@ -732,7 +732,7 @@ the agent to do something it should not.
 - **bpftool**: the userspace utility for inspecting loaded eBPF
   programs and maps.
 - **Capability**: a chunk of root privilege. ~40 capabilities exist;
-  `CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN` are the ones our
+  `CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN`, and `CAP_SYS_RESOURCE` are the ones our
   daemon needs.
 - **cgroup (v2)**: a labelled bucket of processes the kernel uses
   to apply controllers and policy. Identified by a 64-bit ID.

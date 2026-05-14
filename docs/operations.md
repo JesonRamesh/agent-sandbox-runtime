@@ -1,6 +1,8 @@
 # Operations
 
-Operator-facing reference for running `agent-sandbox-daemon` on a real Linux host. For internal architecture, see [`architecture.md`](architecture.md). For the eBPF-side contract and merge-day asks, see [`integration-with-mehul-ebpf.md`](integration-with-mehul-ebpf.md).
+Operator-facing reference for running the daemon on a real Linux host.
+For internal architecture, see [`ARCHITECTURE.md`](ARCHITECTURE.md). For the
+wire contract, see [`INTERFACES.md`](INTERFACES.md).
 
 ## 1. Log locations
 
@@ -12,9 +14,15 @@ The daemon emits two kinds of logs:
   ```
   The unit file ([`deploy/systemd/agent-sandbox.service`](../deploy/systemd/agent-sandbox.service)) sets `StandardOutput=journal` and `StandardError=journal`, and `ExecStart` passes `--log-json` so the journal carries one JSON object per event.
 
-- **Per-agent event log**: one file per agent at `/var/log/agent-sandbox/<agent-id>.log`. Each line is a JSON `Event` (`network.allow`, `network.block`, `agent.started`, `agent.exited`, `agent.crashed`). Files are size-rotated by `internal/events/pipeline.go`'s `rotatingWriter` at 10 MiB with 3 files retained: `<id>.log`, `<id>.log.1`, `<id>.log.2`. Override the directory with `--log-dir`.
+- **Per-agent event log**: one file per agent at `/var/log/agent-sandbox/<agent-id>.log`.
+  Each line is a JSON `Event` such as `net.connect`, `file.open`,
+  `agent.started`, `agent.exited`, or `agent.crashed`. Files are
+  size-rotated by `internal/events/pipeline.go`'s `rotatingWriter` at
+  10 MiB with 3 files retained: `<id>.log`, `<id>.log.1`, `<id>.log.2`.
+  Override the directory with `--log-dir`.
 
-`agentctl logs <agent-id>` and the WebSocket at `ws://127.0.0.1:7443/events?agent=<id>` are both backed by these files / the pipeline.
+`agentctl logs <name>` and the WebSocket at `ws://127.0.0.1:7443/events?agent=<id>`
+are both backed by these files / the pipeline.
 
 ## 2. Common errors and their fixes
 
@@ -26,13 +34,13 @@ The daemon wraps every error with the operation name and (where relevant) the mo
 | `creating pin dir /sys/fs/bpf/...` | bpffs is not mounted. | `sudo mount -t bpf bpf /sys/fs/bpf` or re-run `sudo deploy/install.sh` (which writes a fstab entry so it remounts on boot). |
 | `attaching connect4 to /sys/fs/cgroup/...` | The kernel does not support cgroup-attach BPF (`BPF_PROG_TYPE_CGROUP_SOCK_ADDR`), or the cgroup is not on the v2 unified hierarchy. | Verify with `./scripts/verify-host.sh` — the `BPF cgroup_sock attach supported` check covers this. Install the HWE kernel: `sudo apt install linux-generic-hwe-22.04 && sudo reboot`. |
 | `loading spike_connect4 ELF` (or `spike_connect6`) | The bpf2go-generated `*_bpfel.go` files are missing. They are gitignored on purpose; build needs codegen. | `make generate` (which runs `go generate ./internal/bpf/...`). Requires `clang`, `bpf2go`, and a generated `internal/bpf/vmlinux.h` (run `./scripts/gen-vmlinux.sh` once). |
-| `INVALID_MANIFEST: command must have at least one argument` | `Manifest.Validate()` rejected the request: `command:` in the YAML is empty or missing. | Check the manifest YAML — `command` is required and must be a non-empty list of strings. See [`api/proto.md`](../api/proto.md) §Manifest. |
+| `INVALID_MANIFEST: command must have at least one argument` | `Manifest.Validate()` rejected the request: `command:` in the YAML is empty or missing. | Check the manifest YAML — `command` is required and must be a non-empty list of strings. See [`INTERFACES.md`](INTERFACES.md) and the manifest examples in [`README.md`](../README.md). |
 | `INVALID_MANIFEST: name is required` | Same validation, missing `name`. | Add a `name:` to the manifest. The name is human-readable, not unique. |
 | `policy: lookup "<host>"` (host resolution) | DNS is broken from the daemon's view, or the host does not resolve. | Inspect `/etc/resolv.conf` from the daemon's namespace; the daemon resolves via `net.LookupHost` with the daemon's resolver, not the agent's. Test with `getent hosts <host>` as the `agent-sandbox` user. If you need a literal IP and want to bypass DNS, list `1.2.3.4:443` directly in `allowed_hosts`. |
 | `pinning <name> map` | Pin path already exists from a prior run, or `/sys/fs/bpf/agent-sandbox/` is on a non-bpf filesystem. | See §4 below — clear the stale pin directory. |
 | `creating cgroup ...: file exists` | A cgroup with this id already exists (rare — IDs are random hex). | The id collision is almost certainly a leftover from a prior crash. See §5 for cgroup leftover cleanup. |
 | `websocket addr "..." must bind a loopback address` | `--ws-addr` was set to a non-loopback host. The daemon refuses outright. | Set `--ws-addr=127.0.0.1:7443` (or any `127.0.0.0/8` / `::1` address). The brief mandates localhost-only and there is no auth. |
-| `agent-sandbox-daemon must run as root` | Daemon was launched without root euid. | Run via `systemctl start agent-sandbox` (systemd starts it as root, then drops to the `agent-sandbox` user with the capability set in the unit) or, for ad-hoc testing, `sudo ./bin/agent-sandbox-daemon`. |
+| `agent-sandbox-daemon must run as root` | Daemon was launched without root euid. | Run via `systemctl start agent-sandbox` (systemd starts it as root, then drops to the `agent-sandbox` user with the capability set in the unit) or, for ad-hoc testing from the repo, `sudo ./bin/agentd`. |
 
 ## 3. bpftool recipes
 

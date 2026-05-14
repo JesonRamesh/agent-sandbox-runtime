@@ -113,7 +113,7 @@ agent.
   can be launched. This is the "fail closed" path: if we can't
   enforce, we don't pretend to.
 - **A `RunAgent` request hits the policy slot limit (`MaxPolicies`,
-  currently 64).** Daemon returns `BPF_LOAD_FAILED` and refuses to
+  currently 32).** Daemon returns `BPF_LOAD_FAILED` and refuses to
   spawn. Stop a finished agent first.
 - **Ringbuf reader cannot keep up.** Events are dropped at the
   kernel side; we log a counter of drops. Verdict enforcement is

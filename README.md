@@ -402,7 +402,7 @@ vagrant destroy -f
 - **DNS is resolved once at launch.** `allowed_hosts` entries are resolved
   when the agent starts. DNS rotation after launch is not tracked.
 - **Concurrent agent limit.** The BPF policy array has a fixed maximum
-  (currently 64 slots). The daemon returns `BPF_LOAD_FAILED` if all slots
+  (currently 32 slots). The daemon returns `BPF_LOAD_FAILED` if all slots
   are in use.
 - **Codespaces runs in local mode.** The current devcontainer does not
   provide a 6.8+ kernel with BPF LSM. Kernel enforcement requires a

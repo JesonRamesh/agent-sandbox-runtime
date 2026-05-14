@@ -12,12 +12,12 @@ schema live in [`internal/ipc/protocol.go`](../internal/ipc/protocol.go)
 
 | Surface         | Address                                  | Auth   | Speakers                |
 |-----------------|------------------------------------------|--------|-------------------------|
-| IPC RPC         | `/run/agent-sandbox.sock` (Unix DGRAM)   | uid 0  | agentctl, orchestrator  |
+| IPC RPC         | `/run/agent-sandbox.sock` (Unix stream)  | filesystem perms | agentctl, orchestrator  |
 | Event stream    | `ws://127.0.0.1:7443/events`             | none*  | dashboards, bridges     |
 | Viewer relay    | `ws://127.0.0.1:8765`                    | none*  | senders, viewers        |
 
-\* All sockets bind to loopback only; uid 0 (or the daemon user) is
-required to read the IPC socket via filesystem permissions.
+\* All sockets bind to loopback only. The IPC socket is protected by
+filesystem permissions on `/run/agent-sandbox.sock`.
 
 ---
 
@@ -48,7 +48,7 @@ A successful response:
 ```
 hex:    00 00 00 78
 text:    [length=120]
-json:    {"ok":true,"result":{"version":"0.1.0-phase3","uptime_sec":4287,"socket":"/run/agent-sandbox.sock","agents":3}}
+json:    {"ok":true,"result":{"protocol_version":"0.1","build":"dev","uptime_ns":4287000000000,"agents_running":3}}
 ```
 
 A typed error:
@@ -128,8 +128,18 @@ Submit a manifest; the daemon spawns the agent.
 
 Idempotent: SIGTERM, wait 5 s, SIGKILL.
 
-**Request**: `{ "agent_id": "agt_a1b2c3d4" }`
-**Result**:  `{ "ok": true }`
+**Request**: `{ "name": "my-agent", "grace_period_ns": 5000000000 }`
+**Result**:
+
+```json
+{
+  "name": "my-agent",
+  "exit_code": 143,
+  "signal": "SIGTERM",
+  "duration_ns": 1200000000
+}
+```
+
 **Errors**:  `AGENT_NOT_FOUND`.
 
 ### 3.3 ListAgents
@@ -140,30 +150,37 @@ Idempotent: SIGTERM, wait 5 s, SIGKILL.
 ```json
 {
   "agents": [
-    { "agent_id": "...", "name": "...", "status": "running",
-      "started_at": "...", "pid": 14963 }
+    {
+      "name": "my-agent",
+      "agent_id": "agt_a1b2c3d4",
+      "status": "running",
+      "pid": 14963,
+      "started_at": "2026-04-30T11:51:38.027Z",
+      "uptime_ns": 4287000000000,
+      "policy_summary": "hosts:1 paths:1 bins:1 mode:enforce"
+    }
   ]
 }
 ```
 
-`status` ∈ `running | exited | crashed`.
+`status` ∈ `running | exited | killed`.
 
 ### 3.4 AgentLogs
 
-**Request**: `{ "agent_id": "...", "tail_n": 100 }`
-**Result**:  `{ "lines": [Event, Event, ...] }`
+**Request**: `{ "name": "my-agent", "tail_n": 100 }`
+**Result**:  `{ "events": [Event, Event, ...] }`
 
 If `tail_n=0`, returns all retained events for that agent (subject to
 the daemon's per-agent log rotation policy — currently 10 MB).
 
 ### 3.5 StreamEvents (special: streaming)
 
-Subscribes to live events. `agent_id=""` means "all agents."
+Subscribes to live events. `name=""` means "all agents."
 
-**Request**: `{ "agent_id": "..." }` (empty for all)
+**Request**: `{ "name": "my-agent", "include": ["kernel", "llm"] }`
 
 **Response**: each event arrives as one frame containing
-`{"ok":true,"result":<Event>}`. The stream ends when the client
+`{"ok":true,"result":{"event":<Event>}}`. The stream ends when the client
 closes the socket or the daemon receives SIGTERM.
 
 ### 3.6 IngestEvent
@@ -201,12 +218,11 @@ in the registry; it only forwards them to subscribers.
 
 ```json
 {
-  "version":     "0.1.0-phase3",
-  "uptime_sec":  4287,
-  "socket":      "/run/agent-sandbox.sock",
-  "agents":      3,
-  "bpf_dir":     "/usr/lib/agent-sandbox/bpf",
-  "active_lsms": "lockdown,capability,landlock,yama,apparmor,bpf"
+  "protocol_version": "0.1",
+  "build": "dev",
+  "uptime_ns": 4287000000000,
+  "agents_running": 3,
+  "events_dropped": 0
 }
 ```
 
@@ -214,48 +230,45 @@ in the registry; it only forwards them to subscribers.
 
 ## 4. Event schema
 
-All events share a common envelope:
+All streamed and tailed events share a common envelope:
 
 ```json
 {
+  "schema":   "v1",
   "ts":       "RFC 3339 nanosecond timestamp",
+  "agent":    "my-agent",
   "agent_id": "agt_a1b2c3d4",
-  "type":     "net.connect | file.open | exec | creds.setuid | …",
-  "pid":      12345,
-  "details":  { ... type-specific ... }
+  "category": "kernel | lifecycle | agent | llm",
+  "type":     "connect_allowed | connect_blocked | stdout | tool_call | …",
+  "data":     { ... category/type-specific payload ... }
 }
 ```
 
-### 4.1 Kernel event types
+`category` and `type` together form the stable event key that
+`agentctl logs` renders as `category.type`.
 
-| `type`           | Source                | Verdict-bearing | Key `details` fields                    |
-|------------------|-----------------------|-----------------|------------------------------------------|
-| `net.connect`    | lsm/socket_connect    | yes             | `family`, `daddr`, `dport`, `verdict`    |
-| `net.sendto`     | tp/sys_enter_sendto   | no (audit)      | `comm`, `verdict`                        |
-| `file.open`      | lsm.s/file_open       | yes             | `path`, `flags`, `verdict`               |
-| `exec`           | tp/sched_process_exec | no (audit)      | `filename`, `comm`, `ppid`, `verdict`    |
-| `exec.bprm`      | lsm/bprm_check_security| yes            | `filename`, `verdict`                    |
-| `creds.setuid`   | lsm/task_fix_setuid   | yes             | `old_id`, `new_id`, `verdict`            |
-| `creds.setgid`   | lsm/task_fix_setgid   | yes             | `old_id`, `new_id`, `verdict`            |
-| `creds.capset`   | lsm/capset            | yes             | `cap_effective`, `verdict`               |
+### 4.1 Kernel events
 
-`verdict` ∈ `allow | deny | audit`.
+| `category.type`            | Key `data` fields                              |
+|---------------------------|-------------------------------------------------|
+| `kernel.connect_allowed` | `host`, `port`, `rule`                          |
+| `kernel.connect_blocked` | `host`, `port`, `reason`                        |
 
-Common header fields the daemon adds: `cgroup_id`, `comm`, `tgid`,
-`uid`, `gid`, `time_ns` (kernel `bpf_ktime_get_ns()`).
+These are the stable connectivity decisions surfaced to CLI consumers
+and alternate dashboards.
 
 ### 4.2 Lifecycle events
 
 Synthesized by the daemon, not the kernel:
 
-| `type`                 | When emitted                                | Key `details` fields |
-|------------------------|---------------------------------------------|----------------------|
-| `agent.started`        | After `cmd.Start()` succeeds                | none                 |
-| `agent.exited`         | When `cmd.Wait()` returns nil               | `exit_code`          |
-| `agent.crashed`        | When `cmd.Wait()` returns a non-nil error   | `exit_code`          |
-| `agent.kill_requested` | When StopAgent has been called              | none                 |
-| `agent.stdout`         | For each stdout line emitted by the agent   | `line`, `truncated`  |
-| `agent.stderr`         | For each stderr line emitted by the agent   | `line`, `truncated`  |
+| `category.type`       | When emitted                              | Key `data` fields       |
+|-----------------------|-------------------------------------------|-------------------------|
+| `lifecycle.spawned`   | After the agent is launched               | `pid`, `argv`           |
+| `lifecycle.exit`      | Clean exit                                | `exit_code`             |
+| `lifecycle.crash`     | Non-clean exit / signal                   | `signal`, `core_dumped` |
+| `lifecycle.signal`    | Stop/kill request observed                | `signal`, `from`        |
+| `agent.stdout`        | For each stdout line emitted by the agent | `line`                  |
+| `agent.stderr`        | For each stderr line emitted by the agent | `line`                  |
 
 `agent.stdout` and `agent.stderr` preserve agent text as line-oriented
 events so alternate dashboards and orchestrators can parse semantic
@@ -265,13 +278,13 @@ markers without shelling out to `agentctl logs`.
 
 Pushed by the orchestrator via `IngestEvent`:
 
-| `type`            | `details` fields                                            |
-|-------------------|-------------------------------------------------------------|
-| `llm.tool_call`   | `tool` (name), `args` (JSON), `request_id` (model-supplied) |
-| `llm.tool_result` | `tool`, `ok`, `request_id`, plus tool-specific result data  |
-| `llm.user_input`  | `text`                                                      |
-| `llm.agent_output`| `text`                                                      |
-| `llm.injection_suspected` | `confidence`, `reason`                              |
+| `category.type`        | Key `data` fields                                         |
+|------------------------|-----------------------------------------------------------|
+| `llm.stdout`           | `line`                                                    |
+| `llm.tool_call`        | `name`, `args`                                            |
+| `llm.tool_result`      | `name`, `ok`, `result_summary` and tool-specific payloads |
+| `llm.user_input`       | `text`                                                    |
+| `llm.agent_output`     | `text`                                                    |
 
 Raw stdout/stderr stays in `agent.stdout` / `agent.stderr`. The
 orchestrator only ingests parsed semantic events back into the daemon

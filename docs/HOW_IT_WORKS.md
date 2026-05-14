@@ -47,8 +47,8 @@ agent, the daemon:
    logs and a live event feed.
 
 It's the only privileged piece — your agent runs with normal user
-permissions. The daemon needs three small Linux capabilities
-(`CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN`) to talk to the kernel;
+permissions. The daemon needs four Linux capabilities
+(`CAP_BPF`, `CAP_NET_ADMIN`, `CAP_SYS_ADMIN`, `CAP_SYS_RESOURCE`) to talk to the kernel;
 the agent gets none of them.
 
 ## The CLI (`cmd/agentctl/`) — your control panel
@@ -63,7 +63,7 @@ Other useful commands:
 | Command                       | What it does                                            |
 |-------------------------------|---------------------------------------------------------|
 | `agentctl list`               | Shows running agents and their status                   |
-| `agentctl logs <agent-id>`    | Tails kernel events for one agent                       |
+| `agentctl logs <name>`        | Tails kernel events for one agent                       |
 | `agentctl stop <agent-id>`    | Sends SIGTERM (then SIGKILL after 5 s) to an agent      |
 | `agentctl manifest validate`  | Parses a manifest without contacting the daemon         |
 | `agentctl daemon status`      | Confirms the daemon is up and responding                |

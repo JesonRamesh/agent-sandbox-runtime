@@ -27,8 +27,8 @@ bash viewer/scripts/start-viewer.sh
 
 The script:
 
-1. Verifies Node 22+ is on `PATH` (the kernel mock uses Node's built-in
-   `WebSocket`).
+1. Verifies Node 20+ is on `PATH`. Node 22+ is only needed for the optional
+   kernel mock, which uses Node's built-in `WebSocket`.
 2. Runs `npm install` in `server/` and `viewer-app/` only on the first run
    (skipped afterwards).
 3. Builds the React app (`viewer-app/dist/`).
@@ -238,9 +238,11 @@ viewer/
 
 ## Requirements
 
-- **Node 22+** — required by `mock_kernel_sender.js` (built-in `WebSocket`)
-  and by the start script. The relay itself works on Node 18, but the script
-  enforces 22 to keep one supported toolchain.
+- **Node 20+** — required by `viewer/scripts/start-viewer.sh` and the viewer
+  server itself.
+- **Node 22+** — only needed if you want to run
+  `viewer/scripts/mock_kernel_sender.js`, which uses Node's built-in
+  `WebSocket`.
 - **npm** — bundled with Node.
 - **Python 3.10+** + `websockets` — only if you want to run the LLM mock.
 - **A modern browser** — Chrome / Firefox / Safari current versions.
