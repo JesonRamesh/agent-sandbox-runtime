@@ -243,8 +243,9 @@
   color: var(--text-primary);
 }
 
-.sidebar__count-value--good { color: var(--accent-emerald); }
-.sidebar__count-value--bad  { color: var(--accent-crimson); }
+.sidebar__count-value--good   { color: var(--accent-emerald); }
+.sidebar__count-value--bad    { color: var(--accent-crimson); }
+.sidebar__count-value--policy { color: var(--accent-blue); }
 
 /* ── Policy badge ────────────────────────────────────────────────────────── */
 .sidebar__policy {

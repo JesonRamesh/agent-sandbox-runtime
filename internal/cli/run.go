@@ -92,19 +92,20 @@ func newRunCmd() *cobra.Command {
 // packages so we copy explicitly.
 func manifestToPayload(m *manifest.Manifest) client.ManifestPayload {
 	return client.ManifestPayload{
-		Name:          m.Name,
-		Command:       m.Command,
-		Mode:          m.Mode,
-		AllowedHosts:  m.AllowedHosts,
-		AllowedPaths:  m.AllowedPaths,
-		AllowedBins:   m.AllowedBins,
-		ForbiddenCaps: m.ForbiddenCaps,
-		WorkingDir:    m.WorkingDir,
-		Env:           m.Env,
-		User:          m.User,
-		Stdin:         m.Stdin,
-		TimeoutNS:     m.TimeoutNS,
-		Description:   m.Description,
+		Name:                m.Name,
+		Command:             m.Command,
+		Mode:                m.Mode,
+		AllowedHosts:        m.AllowedHosts,
+		AllowedPaths:        m.AllowedPaths,
+		AllowedBins:         m.AllowedBins,
+		ForbiddenCaps:       m.ForbiddenCaps,
+		DenyCleartextEgress: m.DenyCleartextEgress,
+		WorkingDir:          m.WorkingDir,
+		Env:                 m.Env,
+		User:                m.User,
+		Stdin:               m.Stdin,
+		TimeoutNS:           m.TimeoutNS,
+		Description:         m.Description,
 	}
 }
 

@@ -32,13 +32,11 @@ Vagrant.configure("2") do |config|
     end
   else
     # ── Intel / AMD path (VirtualBox) ────────────────────
-    config.vm.box        = "ubuntu/noble64"
-    config.vm.box_version = ">= 20240401"
+    config.vm.box        = "bento/ubuntu-24.04"
     config.vm.provider "virtualbox" do |vb|
       vb.name   = "agentsandbox-dev"
       vb.memory = 4096
       vb.cpus   = 2
-      vb.customize ["modifyvm", :id, "--nested-hw-virt", "on"]
     end
   end
 
@@ -66,7 +64,6 @@ Vagrant.configure("2") do |config|
       clang llvm \
       linux-tools-generic \
       libbpf-dev \
-      bpftool \
       linux-headers-generic
 
     echo "==> Checking BPF LSM availability..."

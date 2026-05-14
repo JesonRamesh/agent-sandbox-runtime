@@ -382,3 +382,554 @@
 }
 
 /* Tab bar styles live in App.css — removed from here to avoid conflicts */
+
+/* ── Layer toggle bar ────────────────────────────────────────────────────── */
+.wf-layer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.wf-layer-toggle__heading {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.wf-layer-toggle__pills {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-page);
+  border: 0.5px solid var(--border-subtle);
+  border-radius: 20px;
+  padding: 3px;
+}
+
+.wf-layer-toggle__btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px;
+  border-radius: 16px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+  white-space: nowrap;
+}
+
+.wf-layer-toggle__btn:hover:not(.is-active) {
+  color: var(--text-dim);
+  background: var(--bg-panel-hover);
+}
+
+.wf-layer-toggle__btn.is-active {
+  color: #fff;
+  background: var(--accent-blue);
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.35);
+}
+
+.wf-layer-toggle__icon {
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.wf-layer-toggle__label {
+  line-height: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AGENT FLOW LAYER
+   All classes prefixed afl- to avoid collisions with unified-layer classes
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Summary ribbon ─────────────────────────────────────────────────────── */
+.afl-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: var(--bg-panel);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.afl-summary__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.afl-summary__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.afl-summary__value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.afl-summary__value--danger { color: #ff4d5e; }
+.afl-summary__value--good   { color: #3cd784; }
+
+.afl-summary__sep {
+  color: var(--border);
+  font-size: 12px;
+  user-select: none;
+}
+
+/* ── Bookend circle ─────────────────────────────────────────────────────── */
+.afl-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: var(--mono);
+  text-align: center;
+  border: 2px solid;
+}
+
+.afl-circle--start    { background: #0d1f15; border-color: #3cd784; }
+.afl-circle--complete { background: #0d1f15; border-color: #3cd784; }
+.afl-circle--crashed  { background: #1f0d0d; border-color: #ff4d5e; }
+
+.afl-circle__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.afl-circle--start .afl-circle__icon,
+.afl-circle--complete .afl-circle__icon { color: #3cd784; }
+.afl-circle--crashed  .afl-circle__icon  { color: #ff4d5e; }
+
+.afl-circle__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.afl-circle--start .afl-circle__label,
+.afl-circle--complete .afl-circle__label { color: #3cd784; }
+.afl-circle--crashed  .afl-circle__label  { color: #ff4d5e; }
+
+.afl-circle__sub {
+  font-size: 9px;
+  color: var(--text-faint);
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Base card ──────────────────────────────────────────────────────────── */
+.afl-card {
+  width: 100%;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-family: var(--mono);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
+}
+
+/* Left-border colour per card type */
+.afl-card--task      { border-left-color: #5a7aad; }
+.afl-card--reasoning { border-left-color: #8b5cf6; background: rgba(139,92,246,0.04); }
+.afl-card--tool      { border-left-color: #4a9eff; }
+.afl-card--tool.afl-card--ok      { border-left-color: #3cd784; }
+.afl-card--tool.afl-card--blocked { border-left-color: #ff4d5e; background: rgba(255,77,94,0.05); }
+.afl-card--output    { border-left-color: #9b59ff; }
+
+/* Card header row */
+.afl-card__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.afl-card__icon {
+  font-size: 14px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.afl-card__type {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  flex: 1;
+  color: var(--text-dim);
+}
+
+/* Per-card type label colours */
+.afl-card--task      .afl-card__type { color: #7a9aca; }
+.afl-card--reasoning .afl-card__type { color: #a78bfa; }
+.afl-card--tool      .afl-card__type { color: #4a9eff; }
+.afl-card--tool.afl-card--ok      .afl-card__type { color: #3cd784; }
+.afl-card--tool.afl-card--blocked .afl-card__type { color: #ff4d5e; }
+.afl-card--output    .afl-card__type { color: #c084fc; }
+
+/* Step badge */
+.afl-card__step {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-faint);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 6px;
+  letter-spacing: 0.3px;
+  flex-shrink: 0;
+}
+
+/* Body text */
+.afl-card__body {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.afl-card__body--dim {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+/* Arg row (url display) */
+.afl-card__arg {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 10.5px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  padding: 4px 8px;
+  overflow: hidden;
+}
+
+.afl-card__arg-key {
+  color: var(--text-faint);
+  font-weight: 700;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+}
+
+.afl-card__arg-val {
+  color: #4a9eff;
+  word-break: break-all;
+  font-size: 10.5px;
+}
+
+/* Status line */
+.afl-card__status {
+  font-size: 11px;
+  font-weight: 600;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+  margin-top: 2px;
+}
+
+.afl-card__status--ok      { color: #3cd784; }
+.afl-card__status--fail    { color: #ff4d5e; }
+.afl-card__status--pending { color: var(--text-faint); font-style: italic; }
+
+/* Duration badge — pinned top-right */
+.afl-card__duration {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-faint);
+  background: var(--bg-page);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 1px 7px;
+  letter-spacing: 0.3px;
+}
+
+/* ── Danger glow on blocked tool nodes ──────────────────────────────────── */
+.afl-node--blocked .afl-card {
+  box-shadow: 0 0 12px rgba(255,77,94,0.22), 0 0 4px rgba(255,77,94,0.12);
+  animation: afl-danger-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes afl-danger-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(255,77,94,0.22), 0 0 4px rgba(255,77,94,0.12); }
+  50%      { box-shadow: 0 0 22px rgba(255,77,94,0.38), 0 0 8px rgba(255,77,94,0.22); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   KERNEL FLOW LAYER
+   All classes prefixed kfl- to avoid collisions
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Summary ribbon ─────────────────────────────────────────────────────── */
+.kfl-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 0.5px solid var(--border-subtle);
+  background: var(--bg-panel);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.kfl-summary__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kfl-summary__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.kfl-summary__value            { font-size: 13px; font-weight: 700; color: var(--text); }
+.kfl-summary__value--danger    { color: #ff4d5e; }
+.kfl-summary__value--good      { color: #3cd784; }
+
+.kfl-summary__sep {
+  color: var(--border);
+  font-size: 12px;
+  user-select: none;
+}
+
+/* ── Bookend circles (reuse afl pattern, different prefix) ──────────────── */
+.kfl-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-family: var(--mono);
+  text-align: center;
+  border: 2px solid;
+}
+
+.kfl-circle--start    { background: #0d1f15; border-color: #3cd784; }
+.kfl-circle--complete { background: #0d1f15; border-color: #3cd784; }
+.kfl-circle--crashed  { background: #1f0d0d; border-color: #ff4d5e; }
+
+.kfl-circle__icon  { font-size: 20px; line-height: 1; }
+.kfl-circle--start .kfl-circle__icon,
+.kfl-circle--complete .kfl-circle__icon { color: #3cd784; }
+.kfl-circle--crashed .kfl-circle__icon  { color: #ff4d5e; }
+
+.kfl-circle__label {
+  font-size: 9px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase;
+}
+.kfl-circle--start .kfl-circle__label,
+.kfl-circle--complete .kfl-circle__label { color: #3cd784; }
+.kfl-circle--crashed .kfl-circle__label  { color: #ff4d5e; }
+
+.kfl-circle__sub {
+  font-size: 9px; color: var(--text-faint);
+  max-width: 110px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ── Attempt card (left column) ─────────────────────────────────────────── */
+.kfl-attempt {
+  width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid #5a647a;
+  border-radius: 6px;
+  padding: 9px 13px;
+  font-family: var(--mono);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kfl-attempt__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kfl-attempt__icon {
+  font-size: 12px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.kfl-attempt__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  flex: 1;
+}
+
+.kfl-attempt__time {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+}
+
+.kfl-attempt__host {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.kfl-attempt__dst {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+/* ── Verdict card (right column) ────────────────────────────────────────── */
+.kfl-verdict {
+  width: 100%;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-family: var(--mono);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kfl-verdict--allowed {
+  background: rgba(60, 215, 132, 0.06);
+  border: 1px solid #3cd784;
+  border-left: 3px solid #3cd784;
+}
+
+.kfl-verdict--blocked {
+  background: rgba(255, 77, 94, 0.10);
+  border: 1px solid #ff4d5e;
+  border-left: 4px solid #ff4d5e;
+  animation: kfl-pulse 2s ease-in-out infinite;
+}
+
+@keyframes kfl-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255,77,94,0); }
+  50%       { box-shadow: 0 0 0 5px rgba(255,77,94,0.18); }
+}
+
+.kfl-verdict__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.kfl-verdict__icon    { font-size: 13px; flex-shrink: 0; }
+.kfl-verdict--allowed .kfl-verdict__icon { color: #3cd784; }
+.kfl-verdict--blocked .kfl-verdict__icon { color: #ff4d5e; }
+
+.kfl-verdict__label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.kfl-verdict--allowed .kfl-verdict__label { color: #3cd784; }
+.kfl-verdict--blocked .kfl-verdict__label { color: #ff4d5e; }
+
+.kfl-verdict__host {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.kfl-verdict__reason {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.kfl-verdict__time {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
+/* ── Policy badge ───────────────────────────────────────────────────────── */
+.kfl-policy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.kfl-policy--danger {
+  background: rgba(255,77,94,0.15);
+  border: 1px solid rgba(255,77,94,0.5);
+  color: #ff6b7a;
+  animation: kfl-badge-pulse 2s ease-in-out infinite;
+}
+
+.kfl-policy--safe {
+  background: rgba(60,215,132,0.08);
+  border: 1px solid rgba(60,215,132,0.3);
+  color: #3cd784;
+}
+
+.kfl-policy__icon { font-size: 11px; line-height: 1; }
+
+@keyframes kfl-badge-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.75; }
+}
+
+/* Hide ReactFlow right-handle on attempt nodes */
+.kfl-wrapper .react-flow__handle[data-handlepos='right'] {
+  opacity: 0;
+  pointer-events: none;
+}

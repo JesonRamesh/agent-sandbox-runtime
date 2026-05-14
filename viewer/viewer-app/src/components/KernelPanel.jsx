@@ -10,13 +10,28 @@ function formatTime(ts) {
     String(d.getMilliseconds()).padStart(3, '0');
 }
 
+// Pillar labels: NET / FILE / EXEC / CRED come straight off the new
+// pillar-aware event types emitted by viewer/server/transform.js.
+const PILLAR_LABEL = {
+  net:  'Network',
+  file: 'Filesystem',
+  exec: 'Exec',
+  cred: 'Credentials',
+};
+
 function getLabel(event) {
   switch (event.type) {
     case 'connect_attempt': return 'Connection attempt';
     case 'connect_allowed': return 'Connection permitted';
     case 'connect_blocked': return 'Connection refused by kernel';
-    default:                return event.type;
   }
+  // pillar_<allow|block>  →  "<Pillar> permitted/refused by kernel"
+  const m = /^([a-z]+)_(allowed|blocked)$/.exec(event.type);
+  if (m) {
+    const pillar = PILLAR_LABEL[m[1]] || m[1];
+    return m[2] === 'allowed' ? `${pillar} permitted` : `${pillar} refused by kernel`;
+  }
+  return event.type;
 }
 
 function getDetail(event) {
@@ -27,12 +42,17 @@ function getDetail(event) {
       return `→ ${d.dst_ip || '?'}:${d.dst_port || '?'}${host}`;
     }
     case 'connect_allowed':
-      return [d.hostname, d.reason].filter(Boolean).join(' · ');
     case 'connect_blocked':
       return [d.hostname, d.reason].filter(Boolean).join(' · ');
-    default:
-      return '';
   }
+  // Pillar-aware events: bridge fills `data.target` for every kind. Fall
+  // back to dst_ip:dst_port (net) or hostname.
+  if (/_allowed$|_blocked$/.test(event.type)) {
+    const target = d.target || d.hostname ||
+      (d.dst_ip && d.dst_port ? `${d.dst_ip}:${d.dst_port}` : '');
+    return [target, d.reason].filter(Boolean).join(' · ');
+  }
+  return '';
 }
 
 export default function KernelPanel({ events }) {

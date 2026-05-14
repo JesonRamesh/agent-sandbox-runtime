@@ -75,6 +75,20 @@
   justify-content: stretch;
 }
 
+/* ── Policies tab container ──────────────────────────────────────────────── */
+
+.app__policies {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Policies tab: allow vertical scroll since content can be long */
+.app__main--policies {
+  overflow-y: auto;
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {

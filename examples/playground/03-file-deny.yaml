@@ -1,0 +1,31 @@
+# Scenario 3 — FILE PILLAR DENY.
+# allowed_paths is /etc/hostname only. Agent tries /etc/shadow → kernel blocks.
+name: scenario-3-file-deny
+mode: enforce
+command:
+  - python3
+  - -c
+  - |
+    print("[scenario-3] reading /etc/hostname (allowed) ...")
+    print("[scenario-3]  ->", open("/etc/hostname").read().strip())
+    print("[scenario-3] reading /etc/shadow (NOT allowed) ...")
+    try:
+        open("/etc/shadow").read()
+        print("[scenario-3] FAIL: kernel did not block")
+    except PermissionError as e:
+        print(f"[scenario-3] OK: kernel denied open() errno={e.errno} ({e.strerror})")
+allowed_hosts: []
+allowed_paths:
+  - /etc/hostname
+  - /usr/lib/python3
+  - /usr/lib/python3.12
+  - /usr/bin/python3
+  - /lib/x86_64-linux-gnu
+  - /usr/lib/x86_64-linux-gnu
+  - /etc/ld.so.cache
+  - /proc
+  - /dev/null
+  - /dev/urandom
+allowed_bins:
+  - /usr/bin/python3
+forbidden_caps: []

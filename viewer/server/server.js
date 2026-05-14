@@ -19,6 +19,9 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer, WebSocket } = require('ws');
+const { runScenario, listScenarios, RunnerError } = require('./runner');
+const { loadPermissions } = require('./manifest');
+const policyStore = require('./policy_store');
 
 const PORT = Number(process.env.PORT) || 8765;
 // Default loopback-only: the relay forwards privileged kernel events with no
@@ -44,10 +47,86 @@ const WS_MAX_BUFFER  = Number(process.env.WS_MAX_BUFFER) || 8 * 1024 * 1024;
 // dist/ lives next to viewer-app/, which lives next to server/.
 const DIST_ROOT = path.resolve(__dirname, '..', 'viewer-app', 'dist');
 
+// Scenario / policy runner config — overridable via env so a different
+// deployment doesn't need a code edit. Defaults match the Vagrant VM
+// layout the rest of this repo assumes.
+const SCENARIOS_DIR = process.env.SCENARIOS_DIR ||
+  '/home/vagrant/agentsandbox/examples/playground';
+const AGENTCTL_CMD  = process.env.AGENTCTL_CMD  || 'sudo';
+const AGENTCTL_BASE_ARGS = process.env.AGENTCTL_BASE_ARGS
+  ? process.env.AGENTCTL_BASE_ARGS.split(' ')
+  : ['-n', '/home/vagrant/agentsandbox/bin/agentctl', '--socket=/run/agent-sandbox.sock', 'run', '-f'];
+const SCENARIO_TIMEOUT_MS = Number(process.env.SCENARIO_TIMEOUT_MS) || 60_000;
+const SCENARIOS_ENABLED = process.env.SCENARIOS_DISABLED !== '1';
+const SCENARIO_MAX_INFLIGHT = Number(process.env.SCENARIO_MAX_INFLIGHT) || 4;
+let scenarioInflight = 0;
+
+// In-memory tracker of recent agent runs. Populated when /api/scenarios/run
+// (or /api/bindings) fires a scenario; the v2 dashboard's "active agents"
+// view reads /api/agents which serves this. Bounded to AGENT_HISTORY_MAX so
+// a long-running session doesn't grow without bound.
+const AGENT_HISTORY_MAX = 32;
+const agentHistory = []; // newest-last; entries: { policy_id, name, started_at, exit_code, ok, last_message }
+
+function recordAgentRun(entry) {
+  agentHistory.push(entry);
+  if (agentHistory.length > AGENT_HISTORY_MAX) agentHistory.shift();
+}
+
+function patchLastAgentRun(predicate, patch) {
+  for (let i = agentHistory.length - 1; i >= 0; i--) {
+    if (predicate(agentHistory[i])) {
+      Object.assign(agentHistory[i], patch);
+      return true;
+    }
+  }
+  return false;
+}
+
 const senders = new Set();
 const viewers = new Set();
 
 let nextClientId = 1;
+
+// Auto-start orchestrator/evil_server.py so the prompt-injection demo
+// (scenario 08) is self-contained — the LLM fetches the page from this
+// server and sees the hidden injection instruction. Disable by setting
+// EVIL_SERVER_DISABLED=1; override the port via EVIL_SERVER_PORT (also
+// flow into the manifest's allowed_hosts).
+const EVIL_SERVER_PORT = Number(process.env.EVIL_SERVER_PORT) || 8888;
+const EVIL_SERVER_DISABLED = process.env.EVIL_SERVER_DISABLED === '1';
+const EVIL_SERVER_SCRIPT = process.env.EVIL_SERVER_SCRIPT ||
+  '/home/vagrant/agentsandbox/orchestrator/evil_server.py';
+let evilServerChild = null;
+function maybeStartEvilServer() {
+  if (EVIL_SERVER_DISABLED) return;
+  // If the port is already taken, assume someone (a previous viewer
+  // session, a manual run) is already serving it and don't double-start.
+  const probe = require('node:net').createConnection({ host: '127.0.0.1', port: EVIL_SERVER_PORT, timeout: 250 });
+  probe.on('connect', () => { probe.destroy(); });
+  probe.on('timeout', () => { probe.destroy(); spawnEvilServer(); });
+  probe.on('error', () => { spawnEvilServer(); });
+}
+function spawnEvilServer() {
+  if (evilServerChild) return;
+  try {
+    evilServerChild = require('node:child_process').spawn(
+      process.env.LLM_AGENT_PYTHON || 'python3',
+      [EVIL_SERVER_SCRIPT],
+      { detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    evilServerChild.unref();
+    log(`evil-server: spawned pid=${evilServerChild.pid} on :${EVIL_SERVER_PORT} (script=${EVIL_SERVER_SCRIPT})`);
+    evilServerChild.stderr.on('data', (b) => process.stderr.write(`[evil-server] ${b}`));
+    evilServerChild.on('close', (code) => {
+      log(`evil-server: exit code=${code}`);
+      evilServerChild = null;
+    });
+  } catch (err) {
+    warn(`evil-server: spawn failed (${err.message}) — prompt-injection demo will fail until it is started manually`);
+  }
+}
+maybeStartEvilServer();
 
 const recentEventsBuffer = [];
 const BUFFER_MAX = 20;
@@ -184,6 +263,351 @@ function sendPlain(res, status, body) {
   res.end(body);
 }
 
+function sendJson(res, status, obj) {
+  const body = JSON.stringify(obj);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(body),
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
+}
+
+function readJsonBody(req, maxBytes = 64 * 1024) {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const chunks = [];
+    req.on('data', (chunk) => {
+      total += chunk.length;
+      if (total > maxBytes) {
+        const err = new Error('request body too large');
+        err.httpStatus = 413;
+        req.destroy();
+        reject(err);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      const text = Buffer.concat(chunks).toString('utf8') || '{}';
+      try {
+        resolve(JSON.parse(text));
+      } catch (err) {
+        const wrapped = new Error(`invalid JSON: ${err.message}`);
+        wrapped.httpStatus = 400;
+        reject(wrapped);
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+// Spawn a scenario by stem (e.g. "01-baseline-allowed"). Tracks the agent
+// run in agentHistory for the dashboard's "active agents" view. Returns
+// the runner result object. Throws RunnerError or PolicyStoreError on
+// failure; caller maps to HTTP status.
+async function fireScenario(stem, originHint = 'api') {
+  if (scenarioInflight >= SCENARIO_MAX_INFLIGHT) {
+    const e = new Error(`at most ${SCENARIO_MAX_INFLIGHT} concurrent runs`);
+    e.code = 'too_many_inflight';
+    throw e;
+  }
+  scenarioInflight += 1;
+  const startedAt = new Date().toISOString();
+  recordAgentRun({
+    name: stem,
+    origin: originHint,
+    started_at: startedAt,
+    state: 'running',
+  });
+  log(`scenario run requested: stem=${JSON.stringify(stem)} origin=${originHint} inflight=${scenarioInflight}`);
+  try {
+    const result = await runScenario(stem, {
+      manifestsDir: SCENARIOS_DIR,
+      command: AGENTCTL_CMD,
+      baseArgs: AGENTCTL_BASE_ARGS,
+      timeoutMs: SCENARIO_TIMEOUT_MS,
+    });
+    patchLastAgentRun(
+      (e) => e.name === stem && e.started_at === startedAt,
+      {
+        state: 'finished',
+        ok: result.ok,
+        exit_code: result.exitCode,
+        last_message: result.ok ? `exit ${result.exitCode}` :
+          (result.stderr ? result.stderr.split('\n')[0] : `exit ${result.exitCode}`),
+      },
+    );
+    return result;
+  } catch (err) {
+    patchLastAgentRun(
+      (e) => e.name === stem && e.started_at === startedAt,
+      { state: 'errored', ok: false, last_message: err.message },
+    );
+    throw err;
+  } finally {
+    scenarioInflight -= 1;
+  }
+}
+
+// /api/* dispatcher. Returns true if it answered the request.
+async function handleApiRequest(req, res, urlPath) {
+  // Health: a flat 200 the v2 UI's pingDaemon polls every 10s. The relay
+  // is the right thing to check liveness against — if it's reachable, the
+  // dashboard can do everything it offers.
+  if (req.method === 'GET' && urlPath === '/api/healthz') {
+    sendJson(res, 200, { ok: true, ts: ts(), inflight: scenarioInflight });
+    return true;
+  }
+
+  // Scenarios — list (each entry includes its parsed permissions).
+  if (req.method === 'GET' && urlPath === '/api/scenarios') {
+    if (!SCENARIOS_ENABLED) {
+      sendJson(res, 200, { enabled: false, scenarios: [] });
+      return true;
+    }
+    try {
+      const stems = await listScenarios({ manifestsDir: SCENARIOS_DIR });
+      const scenarios = await Promise.all(stems.map(async (name) => {
+        const r = await loadPermissions(name, SCENARIOS_DIR);
+        if (r.ok) return { name, permissions: r.summary };
+        return { name, permissions: null, parse_error: r.error };
+      }));
+      sendJson(res, 200, { enabled: true, scenarios, dir: SCENARIOS_DIR });
+    } catch (err) {
+      warn(`/api/scenarios: ${err.message}`);
+      sendJson(res, 500, { error: 'list_failed', message: err.message });
+    }
+    return true;
+  }
+
+  // Scenarios — run by stem.
+  if (req.method === 'POST' && urlPath === '/api/scenarios/run') {
+    if (!SCENARIOS_ENABLED) {
+      sendJson(res, 503, { error: 'scenarios_disabled' });
+      return true;
+    }
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (err) { sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message }); return true; }
+    try {
+      const result = await fireScenario(body && body.name, 'scenario_runner');
+      sendJson(res, 200, {
+        ok: result.ok, exit_code: result.exitCode, signal: result.signal,
+        stdout: result.stdout, stderr: result.stderr, scenario: body && body.name,
+      });
+    } catch (err) {
+      if (err && err.code === 'too_many_inflight') {
+        sendJson(res, 429, { error: err.code, message: err.message });
+      } else if (err instanceof RunnerError) {
+        const status = err.code === 'invalid_name' ? 400 :
+          err.code === 'not_found' ? 404 :
+          err.code === 'timeout' ? 504 : 500;
+        sendJson(res, status, { error: err.code, message: err.message });
+      } else {
+        warn(`scenario run failed: ${err.stack || err.message}`);
+        sendJson(res, 500, { error: 'internal', message: err.message });
+      }
+    }
+    return true;
+  }
+
+  // Policies — list. Backed by examples/playground/*.yaml files.
+  if (req.method === 'GET' && urlPath === '/api/policies') {
+    try {
+      const policies = await policyStore.listAll(SCENARIOS_DIR);
+      sendJson(res, 200, policies);
+    } catch (err) {
+      warn(`/api/policies list: ${err.message}`);
+      sendJson(res, 500, { error: 'list_failed', message: err.message });
+    }
+    return true;
+  }
+
+  // Policies — create.
+  if (req.method === 'POST' && urlPath === '/api/policies') {
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (err) { sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message }); return true; }
+    try {
+      const created = await policyStore.create(body, SCENARIOS_DIR);
+      sendJson(res, 201, created);
+    } catch (err) {
+      if (err instanceof policyStore.PolicyStoreError) {
+        const status = err.code === 'invalid' ? 400 :
+          err.code === 'conflict' ? 409 : 500;
+        sendJson(res, status, { error: err.code, message: err.message });
+      } else {
+        warn(`/api/policies create: ${err.stack || err.message}`);
+        sendJson(res, 500, { error: 'internal', message: err.message });
+      }
+    }
+    return true;
+  }
+
+  // Policies — get / update / delete by id.
+  const policyMatch = /^\/api\/policies\/(\d+)$/.exec(urlPath);
+  if (policyMatch) {
+    const id = Number(policyMatch[1]);
+    if (req.method === 'GET') {
+      try { sendJson(res, 200, await policyStore.getById(id, SCENARIOS_DIR)); }
+      catch (err) {
+        if (err instanceof policyStore.PolicyStoreError && err.code === 'not_found') {
+          sendJson(res, 404, { error: err.code, message: err.message });
+        } else {
+          sendJson(res, 500, { error: 'internal', message: err.message });
+        }
+      }
+      return true;
+    }
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readJsonBody(req); }
+      catch (err) { sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message }); return true; }
+      try {
+        const updated = await policyStore.update(id, body, SCENARIOS_DIR);
+        sendJson(res, 200, updated);
+      } catch (err) {
+        if (err instanceof policyStore.PolicyStoreError) {
+          const status = err.code === 'invalid' ? 400 :
+            err.code === 'not_found' ? 404 : 500;
+          sendJson(res, status, { error: err.code, message: err.message });
+        } else {
+          sendJson(res, 500, { error: 'internal', message: err.message });
+        }
+      }
+      return true;
+    }
+    if (req.method === 'DELETE') {
+      try {
+        await policyStore.remove(id, SCENARIOS_DIR);
+        res.writeHead(204); res.end();
+      } catch (err) {
+        if (err instanceof policyStore.PolicyStoreError && err.code === 'not_found') {
+          sendJson(res, 404, { error: err.code, message: err.message });
+        } else {
+          sendJson(res, 500, { error: 'internal', message: err.message });
+        }
+      }
+      return true;
+    }
+  }
+
+  // Policies — next id helper for the "create" form.
+  if (req.method === 'GET' && urlPath === '/api/policies/next-id') {
+    try { sendJson(res, 200, { id: await policyStore.nextId(SCENARIOS_DIR) }); }
+    catch (err) { sendJson(res, 500, { error: 'internal', message: err.message }); }
+    return true;
+  }
+
+  // Bindings — re-fire a policy as a scenario. The v2 BindingsForm sends
+  // { cgroup_id, policy_id }; we treat cgroup_id as a free-form display
+  // label and use policy_id to look up the YAML to run. policy_id=0 is
+  // historically "remove binding" which we treat as a no-op.
+  if (req.method === 'POST' && urlPath === '/api/bindings') {
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (err) { sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message }); return true; }
+    const policyId = Number(body && body.policy_id);
+    if (policyId === 0) { res.writeHead(204); res.end(); return true; }
+    if (!Number.isInteger(policyId) || policyId < 1) {
+      sendJson(res, 400, { error: 'invalid', message: 'policy_id must be a positive integer (or 0 to unbind)' });
+      return true;
+    }
+    try {
+      const stem = await policyStore.scenarioStemForId(policyId, SCENARIOS_DIR);
+      // Fire-and-record. The wire reply tells the UI both the immediate
+      // exec result AND echoes the binding so the form can confirm.
+      const result = await fireScenario(stem, `binding cgroup_id=${body && body.cgroup_id}`);
+      sendJson(res, 200, {
+        ok: result.ok, exit_code: result.exitCode, signal: result.signal,
+        stdout: result.stdout, stderr: result.stderr,
+        binding: { cgroup_id: body && body.cgroup_id, policy_id: policyId, scenario: stem },
+      });
+    } catch (err) {
+      if (err && err.code === 'too_many_inflight') {
+        sendJson(res, 429, { error: err.code, message: err.message });
+      } else if (err instanceof policyStore.PolicyStoreError) {
+        sendJson(res, err.code === 'not_found' ? 404 : 400, { error: err.code, message: err.message });
+      } else if (err instanceof RunnerError) {
+        sendJson(res, 500, { error: err.code, message: err.message });
+      } else {
+        warn(`/api/bindings: ${err.stack || err.message}`);
+        sendJson(res, 500, { error: 'internal', message: err.message });
+      }
+    }
+    return true;
+  }
+
+  // Active agents — most-recent first slice of agentHistory.
+  if (req.method === 'GET' && urlPath === '/api/agents') {
+    sendJson(res, 200, { agents: agentHistory.slice().reverse() });
+    return true;
+  }
+
+  // LLM agent — fire the orchestrator's run_llm_agent.py with a task.
+  // The script publishes session_start / tool_call / agent_output events
+  // directly to the relay's WebSocket, so the dashboard's workflow tab
+  // sees them in real time without us shuttling the stdout back.
+  //
+  // We do not wait for the spawn — LLM turns can take 10+ seconds and the
+  // dashboard is the right place to observe progress. The endpoint
+  // returns 202 with the launched PID; agentHistory tracks the run.
+  if (req.method === 'POST' && urlPath === '/api/llm/run') {
+    let body;
+    try { body = await readJsonBody(req); }
+    catch (err) { sendJson(res, err.httpStatus || 400, { error: 'bad_body', message: err.message }); return true; }
+    const task = (body && body.task) || '';
+    if (typeof task !== 'string' || task.trim() === '') {
+      sendJson(res, 400, { error: 'invalid', message: 'task must be a non-empty string' });
+      return true;
+    }
+    const scriptPath = process.env.LLM_AGENT_SCRIPT ||
+      '/home/vagrant/agentsandbox/orchestrator/run_llm_agent.py';
+    const pythonBin = process.env.LLM_AGENT_PYTHON || 'python3';
+    let child;
+    try {
+      child = require('node:child_process').spawn(pythonBin, [scriptPath, task], {
+        // Inherit env so OPENAI_API_KEY / OPENAI_BASE_URL flow through (the
+        // script also reads orchestrator/.env via python-dotenv as a
+        // fallback). detached + ignored stdio so the parent can return
+        // immediately without leaving zombies.
+        env: process.env,
+        detached: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: 'spawn_failed', message: err.message });
+      return true;
+    }
+    const startedAt = new Date().toISOString();
+    recordAgentRun({
+      name: 'llm-agent',
+      origin: `llm task=${task.slice(0, 60)}${task.length > 60 ? '…' : ''}`,
+      started_at: startedAt,
+      state: 'running',
+      pid: child.pid,
+    });
+    // Stream a one-line log when the child exits so the operator can see
+    // it in the relay's stderr; we don't gate the response on it.
+    let stderrBuf = '';
+    child.stderr.on('data', (b) => { stderrBuf += b.toString('utf8'); });
+    child.on('close', (code, signal) => {
+      patchLastAgentRun(
+        (e) => e.name === 'llm-agent' && e.started_at === startedAt,
+        { state: 'finished', ok: code === 0, exit_code: code, last_message:
+          code === 0 ? `exit 0` : (stderrBuf.split('\n').filter(Boolean).slice(-1)[0] || `exit ${code}`) },
+      );
+      log(`llm agent exit pid=${child.pid} code=${code} signal=${signal || ''}`);
+    });
+    child.unref();
+    sendJson(res, 202, { ok: true, pid: child.pid, started_at: startedAt });
+    return true;
+  }
+
+  return false;
+}
+
 function sendStaticFile(req, res, filePath) {
   fs.stat(filePath, (statErr, stats) => {
     if (statErr || !stats.isFile()) {
@@ -207,6 +631,28 @@ function sendStaticFile(req, res, filePath) {
 }
 
 function handleHttpRequest(req, res) {
+  let urlPath;
+  try {
+    urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+  } catch {
+    sendPlain(res, 400, 'bad request\n');
+    return;
+  }
+
+  // /api/* — JSON endpoints (policies, scenarios, agents, healthz).
+  // These must be dispatched before the GET-only static check so POST/PUT/
+  // DELETE work. handleApiRequest answers itself; if it returns false we
+  // fall through with a 404.
+  if (urlPath.startsWith('/api/')) {
+    handleApiRequest(req, res, urlPath).then((handled) => {
+      if (!handled) sendJson(res, 404, { error: 'not_found', path: urlPath });
+    }).catch((err) => {
+      warn(`API handler crashed: ${err.stack || err.message}`);
+      try { sendJson(res, 500, { error: 'internal', message: err.message }); } catch (_) {}
+    });
+    return;
+  }
+
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendPlain(res, 405, 'method not allowed\n');
     return;
@@ -224,14 +670,6 @@ function handleHttpRequest(req, res) {
     return;
   }
 
-  // Strip query string + decode the URL-encoded path; default `/` to index.html.
-  let urlPath;
-  try {
-    urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
-  } catch {
-    sendPlain(res, 400, 'bad request\n');
-    return;
-  }
   if (urlPath === '/' || urlPath === '') urlPath = '/index.html';
 
   // Resolve and confirm the result is inside DIST_ROOT — refuse traversal.

@@ -10,6 +10,10 @@ import MiniFlow from './components/MiniFlow.jsx';
 import ConnectionTimeline from './components/ConnectionTimeline.jsx';
 import WorkflowGraph from './components/WorkflowGraph.jsx';
 import './components/WorkflowGraph.css';
+import PolicyView from './components/PolicyView.jsx';
+import LLMAgentLauncher from './components/LLMAgentLauncher.jsx';
+import { fetchPolicies } from './api/daemonApi.js';
+import { MOCK_POLICIES } from './api/mockPolicies.js';
 
 const WS_URL = 'ws://localhost:8765';
 const RECONNECT_DELAY_MS = 3000;
@@ -19,7 +23,22 @@ const LLM_TYPES = new Set([
   'stdout', 'tool_call', 'stopped', 'crashed',
   'session_start', 'user_input', 'tool_result', 'agent_output',
 ]);
-const KERNEL_TYPES = new Set(['connect_attempt', 'connect_allowed', 'connect_blocked']);
+// Kernel event type allow-list. Includes both:
+//   * legacy `connect_*` types (used by the original mock emitter and any
+//     older sender)
+//   * pillar-aware `<pillar>_<verdict>` types emitted by viewer/server/
+//     transform.js when the daemon's bridge is connected (net/file/exec/
+//     cred × allowed/blocked)
+// The dashboard's stats logic below treats `*_blocked` as blocked and
+// `*_allowed` as allowed, so adding a new pillar in the bridge does not
+// require touching this file.
+const KERNEL_TYPES = new Set([
+  'connect_attempt', 'connect_allowed', 'connect_blocked',
+  'net_allowed',  'net_blocked',
+  'file_allowed', 'file_blocked',
+  'exec_allowed', 'exec_blocked',
+  'cred_allowed', 'cred_blocked',
+]);
 
 // Banner reveal is delayed slightly after the kernel row flashes so the eye
 // follows the chain of cause from RIGHT panel → LEFT banner.
@@ -63,7 +82,18 @@ export default function App() {
   const [blockedPulseKey, setBlockedPulseKey] = useState(0);
   const [latestAnalysis, setLatestAnalysis] = useState(null);
   const [lastAnalysisTs, setLastAnalysisTs] = useState(null);
+  // 'events' | 'workflow' | 'policies'
   const [activeTab, setActiveTab] = useState('events');
+
+  // Policy count — fetched once on mount so sidebar can show it on all tabs
+  const [policyCount, setPolicyCount] = useState(null);
+
+  // Load policy count once on mount (falls back to mock length if daemon offline)
+  useEffect(() => {
+    fetchPolicies()
+      .then((data) => setPolicyCount((data || []).length))
+      .catch(() => setPolicyCount(MOCK_POLICIES.length));
+  }, []);
 
   const socketRef = useRef(null);
   const reconnectTimerRef = useRef(null);
@@ -166,7 +196,10 @@ export default function App() {
     let lastAlert = null;
 
     for (const ke of kernelEvents) {
-      if (ke.type !== 'connect_blocked') continue;
+      // Trigger the cross-panel alert on any kernel deny — pillar-aware
+      // (`*_blocked`) types now emit through the bridge, so we accept
+      // anything ending in `_blocked` rather than just `connect_blocked`.
+      if (!ke.type.endsWith('_blocked')) continue;
       if (handled.has(ke._id)) continue;
       handled.add(ke._id);
 
@@ -230,8 +263,11 @@ export default function App() {
     let allowed = 0;
     let blocked = 0;
     for (const e of kernelEvents) {
-      if (e.type === 'connect_allowed') allowed += 1;
-      else if (e.type === 'connect_blocked') blocked += 1;
+      // Count any pillar's `_allowed` / `_blocked` plus the legacy
+      // `connect_*` types so the stats row works for both the bridge
+      // (pillar-aware) and the original mock emitter.
+      if (e.type.endsWith('_allowed')) allowed += 1;
+      else if (e.type.endsWith('_blocked')) blocked += 1;
     }
     return { toolCalls, allowed, blocked, uptime };
   }, [llmEvents, kernelEvents, uptime]);
@@ -242,6 +278,24 @@ export default function App() {
   const filteredKernel = activeAgent
     ? kernelEvents.filter((e) => e.agent === activeAgent)
     : kernelEvents;
+
+  // The workflow components (UnifiedFlowLayer / AgentFlowLayer /
+  // KernelFlowLayer) were written for the legacy `connect_*` schema. To
+  // avoid touching those layouts in 14 places, we project pillar-aware
+  // kernel events down to legacy types just for the workflow view. The
+  // *_blocked → connect_blocked mapping is one-way: the original data is
+  // preserved on `data.original_type` so layouts can still surface pillar
+  // info if they want to. KernelPanel keeps the rich pillar-aware event
+  // unchanged.
+  const filteredKernelLegacy = useMemo(() => {
+    const map = (e) => {
+      if (e.type === 'connect_attempt' || e.type === 'connect_allowed' || e.type === 'connect_blocked') return e;
+      if (e.type.endsWith('_blocked')) return { ...e, type: 'connect_blocked', data: { ...(e.data || {}), original_type: e.type } };
+      if (e.type.endsWith('_allowed')) return { ...e, type: 'connect_allowed', data: { ...(e.data || {}), original_type: e.type } };
+      return e;
+    };
+    return filteredKernel.map(map);
+  }, [filteredKernel]);
 
   return (
     <div className="app">
@@ -260,42 +314,48 @@ export default function App() {
           wsStatus={wsStatus}
           activeTab={activeTab}
           onSelectTab={setActiveTab}
+          policyCount={policyCount}
         />
 
-        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}`}>
-          {/* Animated ring stats — hidden on workflow tab */}
+        <div className={`app__main${activeTab === 'workflow' ? ' app__main--workflow' : ''}${activeTab === 'policies' ? ' app__main--policies' : ''}`}>
+          {/* Animated ring stats — events tab only */}
           {activeTab === 'events' && <StatRings stats={stats} blockedPulseKey={blockedPulseKey} />}
 
-          {/* Event panels or workflow graph */}
-          {activeTab === 'events' ? (
-            <>
-            <MiniFlow
-              llmEvents={filteredLlm}
-              kernelEvents={filteredKernel}
-              injectionTargets={injectionTargets}
-            />
-            <div className="app__panels">
-              <LLMPanel
-                events={filteredLlm}
-                alert={injectionAlert}
-                injectionTargets={injectionTargets}
-                onDismissAlert={dismissAlert}
-              />
-              <KernelPanel events={filteredKernel} />
-            </div>
-            </>  
-          ) : (
-            <div className="app__workflow">
-              <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernel} />
-            </div>
-          )}
-
-          {/* Connection timeline + threat gauge — events tab only */}
+          {/* ── Events tab ──────────────────────────────────────────── */}
           {activeTab === 'events' && (
             <>
+              <LLMAgentLauncher />
+              <MiniFlow
+                llmEvents={filteredLlm}
+                kernelEvents={filteredKernel}
+                injectionTargets={injectionTargets}
+              />
+              <div className="app__panels">
+                <LLMPanel
+                  events={filteredLlm}
+                  alert={injectionAlert}
+                  injectionTargets={injectionTargets}
+                  onDismissAlert={dismissAlert}
+                />
+                <KernelPanel events={filteredKernel} />
+              </div>
               <ConnectionTimeline kernelEvents={filteredKernel} />
               <ThreatGauge analysis={latestAnalysis} lastTs={lastAnalysisTs} />
             </>
+          )}
+
+          {/* ── Workflow tab ─────────────────────────────────────────── */}
+          {activeTab === 'workflow' && (
+            <div className="app__workflow">
+              <WorkflowGraph llmEvents={filteredLlm} kernelEvents={filteredKernelLegacy} />
+            </div>
+          )}
+
+          {/* ── Policies tab ─────────────────────────────────────────── */}
+          {activeTab === 'policies' && (
+            <div className="app__policies">
+              <PolicyView onCountChange={setPolicyCount} />
+            </div>
           )}
         </div>
       </div>

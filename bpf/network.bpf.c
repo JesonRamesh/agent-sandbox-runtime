@@ -77,8 +77,25 @@ int BPF_PROG(asb_socket_connect, struct socket *sock, struct sockaddr *address, 
     __u16 dport = bpf_ntohs(BPF_CORE_READ(sin, sin_port));
 
     int allowed = host_allowed(pol, daddr, dport);
+
+    // Cleartext-egress gate. Applies *only after* host_allowed already
+    // matched — we don't want a non-TLS port to mask a host-allowlist
+    // failure with a confusing reason. If the host check failed we fall
+    // through to the normal deny path; if it succeeded but the port is
+    // not TLS and the agent's policy forbids cleartext egress, downgrade
+    // the verdict to DENY. The reason string is reconstructed in
+    // userspace (internal/policy/attribute.go) from the same manifest
+    // and the kernel-reported daddr:dport, so we don't need an extra
+    // event-kind here.
+    int cleartext_denied = 0;
+    if (allowed && pol->deny_cleartext_egress && !IS_TLS_PORT(dport)) {
+        allowed = 0;
+        cleartext_denied = 1;
+    }
+
     int verdict = allowed ? VERDICT_ALLOW
                           : (pol->mode ? VERDICT_DENY : VERDICT_AUDIT);
+    (void)cleartext_denied;  // reserved for a future kind discriminant
 
     struct {
         struct event_hdr  hdr;
