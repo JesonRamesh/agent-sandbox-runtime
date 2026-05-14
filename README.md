@@ -73,7 +73,11 @@ bash scripts/local-demo.sh
 ```
 
 Or open this repo in [GitHub Codespaces](https://codespaces.new/Harrishayy/AgentOS) —
-the devcontainer sets everything up automatically.
+the devcontainer sets everything up automatically in local mode.
+
+> **Codespaces is local mode only.** You can build the repo, run the
+> orchestrator, and use the dashboard there, but the container kernel does
+> not expose BPF LSM, so `agentd` cannot enforce policies in Codespaces.
 
 **Sandbox your existing agent in two lines:**
 
@@ -120,27 +124,30 @@ When it finishes it prints exactly what to run next.
 
 **Requires:** Homebrew and the repo checked out under your home directory.
 
-### Windows — GitHub Codespaces (recommended)
+### Windows
 
 The kernel enforcement layer requires a real Linux kernel. WSL 2 uses
-Microsoft's custom kernel and cannot activate the BPF LSM — so on Windows,
-**Codespaces is the recommended path** for full enforcement.
+Microsoft's custom kernel and cannot activate the BPF LSM, so on Windows
+the **full-enforcement path** is a Linux VM via Vagrant / VirtualBox:
 
-Click **Code → Codespaces → Create codespace on main** in the GitHub UI,
+```bash
+bash scripts/setup-vagrant.sh
+```
+
+Requires [Vagrant](https://developer.hashicorp.com/vagrant/downloads) and
+[VirtualBox](https://www.virtualbox.org/wiki/Downloads). Run it from Git Bash
+or another shell that can launch the helper script.
+
+If you only want local-mode development — orchestrator runs, tool tracing,
+and the live dashboard without kernel enforcement — GitHub Codespaces is still
+useful. Open **Code → Codespaces → Create codespace on main** in the GitHub UI,
 or open directly:
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Harrishayy/AgentOS)
 
-The devcontainer runs Ubuntu with a 6.8+ kernel. Once the codespace is
-ready, run:
-
-```bash
-bash scripts/setup-vm.sh   # activates BPF LSM, installs any remaining deps
-make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
-```
-
 The dashboard at `http://127.0.0.1:8765` is forwarded to your Windows
-browser automatically via Codespaces port forwarding.
+browser automatically via Codespaces port forwarding, but `agentd` remains
+in local mode there.
 
 > **WSL 2 (local mode only):** If you only want to explore the orchestrator,
 > tool tracing, and dashboard without kernel enforcement, WSL 2 works —
@@ -156,7 +163,7 @@ bash scripts/setup-vm.sh   # installs deps, activates BPF LSM (reboot if prompte
 make all                    # builds bin/agentd, bin/agentctl, bpf/*.bpf.o
 ```
 
-### Vagrant / VirtualBox (optional alternative)
+### Vagrant / VirtualBox (also the recommended Windows full-enforcement path)
 
 If you specifically want VirtualBox rather than WSL or Lima:
 

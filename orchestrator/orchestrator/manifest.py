@@ -41,6 +41,14 @@ _PROVIDER_API_KEY_ENV: dict[str, str] = {
 }
 
 
+def _strip_optional_port(host_entry: str) -> str:
+    """Return a host[:port] entry without its numeric port suffix."""
+    host, sep, port = host_entry.rpartition(":")
+    if sep and port.isdigit():
+        return host
+    return host_entry
+
+
 @dataclass
 class AgentManifest:
     name: str
@@ -72,7 +80,8 @@ class AgentManifest:
         host = urlparse(base_url).hostname or ""
         if not host:
             return []
-        if host in self.allowed_hosts:
+        allowed_bare_hosts = {_strip_optional_port(entry) for entry in self.allowed_hosts}
+        if host in allowed_bare_hosts:
             return []
         return [host]
 

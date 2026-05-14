@@ -83,13 +83,10 @@ Vagrant.configure("2") do |config|
       echo "    WARNING: cgroup v2 not mounted."
     fi
 
-    echo "==> Installing Go 1.22 (P2's daemon language)..."
-    GO_VERSION="1.22.2"
-    ARCH=$(dpkg --print-architecture)
-    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" \
-      | tar -C /usr/local -xz
-    echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile.d/go.sh
-    echo 'export GOPATH=/home/vagrant/go'       >> /etc/profile.d/go.sh
+    # Go is installed by scripts/setup-vm.sh (currently Go 1.23.4,
+    # matching go.mod). Do NOT install a separate version here —
+    # having two Go trees on PATH causes subtle build failures.
+    echo "==> Skipping Go install (handled by scripts/setup-vm.sh)"
 
     echo "==> Installing Node.js 20 (P5's process viewer)..."
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - 2>/dev/null
@@ -115,7 +112,7 @@ Vagrant.configure("2") do |config|
     echo " Kernel : $(uname -r)"
     echo " Node   : $(node --version)"
     echo " Python : $(python3 --version)"
-    echo " Go     : $(/usr/local/go/bin/go version || echo 're-login to activate')"
+    echo " Go     : (installed by scripts/setup-vm.sh — run it after first login)"
     echo ""
     echo " cd /home/vagrant/agentsandbox to start working"
     echo "================================================"

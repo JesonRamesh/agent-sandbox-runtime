@@ -329,6 +329,10 @@ class MissingProviderHostsTests(unittest.TestCase):
         m = self._manifest(provider="anthropic", allowed_hosts=["api.anthropic.com"])
         self.assertEqual(m.missing_provider_hosts(), [])
 
+    def test_returns_empty_when_host_with_port_suffix_in_allowed_hosts(self):
+        m = self._manifest(provider="anthropic", allowed_hosts=["api.anthropic.com:443"])
+        self.assertEqual(m.missing_provider_hosts(), [])
+
     def test_returns_host_for_openai_when_missing(self):
         m = self._manifest(provider="openai")
         self.assertEqual(m.missing_provider_hosts(), ["api.openai.com"])
@@ -703,33 +707,42 @@ class DaemonClientTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def _write_validate_fixture(self, root: Path, *, allowed_hosts: list[str], provider: str | None = None):
+        manifest_lines = [
+            "name: validate-agent",
+            "command: ['python', 'agent.py']",
+        ]
+        if allowed_hosts:
+            manifest_lines.append("allowed_hosts:")
+            manifest_lines.extend([f"  - {host}" for host in allowed_hosts])
+        else:
+            manifest_lines.append("allowed_hosts: []")
+        manifest_lines.append("allowed_paths: []")
+        if provider:
+            manifest_lines.append(f"provider: {provider}")
+
+        manifest_path = root / "agent.yaml"
+        manifest_path.write_text("\n".join(manifest_lines) + "\n", encoding="utf-8")
+
+        scenario_path = root / "scenario.yaml"
+        scenario_path.write_text(
+            "\n".join(
+                [
+                    "name: validate-scenario",
+                    "agents:",
+                    "  - id: a",
+                    "    manifest: ./agent.yaml",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return manifest_path, scenario_path
+
     def test_cli_validate_emits_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            manifest_path = root / "agent.yaml"
-            manifest_path.write_text(
-                "\n".join(
-                    [
-                        "name: validate-agent",
-                        "command: ['python', 'agent.py']",
-                        "allowed_hosts: []",
-                        "allowed_paths: []",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            scenario_path = root / "scenario.yaml"
-            scenario_path.write_text(
-                "\n".join(
-                    [
-                        "name: validate-scenario",
-                        "agents:",
-                        "  - id: a",
-                        "    manifest: ./agent.yaml",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            _, scenario_path = self._write_validate_fixture(root, allowed_hosts=[])
             stdout = io.StringIO()
             with contextlib.redirect_stdout(stdout):
                 exit_code = cli_run(["validate", "-f", str(scenario_path), "--json"])
@@ -740,6 +753,70 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["scenario_name"], "validate-scenario")
         self.assertEqual(payload["agents"][0]["id"], "a")
         self.assertEqual(payload["max_retries"], 0)
+        self.assertEqual(payload["warnings"], [])
+
+    def test_cli_validate_emits_provider_host_warning_in_human_output(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, scenario_path = self._write_validate_fixture(
+                root,
+                allowed_hosts=["example.com"],
+                provider="anthropic",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = cli_run(["validate", "-f", str(scenario_path)])
+
+        output = stdout.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("[validate] scenario 'validate-scenario' is valid", output)
+        self.assertIn("[validate] warning:", output)
+        self.assertIn("api.anthropic.com", output)
+
+    def test_cli_validate_emits_provider_host_warning_in_json(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, scenario_path = self._write_validate_fixture(
+                root,
+                allowed_hosts=["example.com"],
+                provider="anthropic",
+            )
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = cli_run(["validate", "-f", str(scenario_path), "--json"])
+
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(len(payload["warnings"]), 1)
+        self.assertEqual(payload["warnings"][0]["agent_id"], "a")
+        self.assertEqual(payload["warnings"][0]["host"], "api.anthropic.com")
+        self.assertEqual(payload["warnings"][0]["provider"], "anthropic")
+
+    def test_repo_root_python_m_orchestrator_help_works(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        proc = subprocess.run(
+            [sys.executable, "-m", "orchestrator", "--help"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("usage: orchestrator", proc.stdout)
+        self.assertIn("validate", proc.stdout)
+
+    def test_repo_root_python_m_orchestrator_cli_help_works(self):
+        repo_root = Path(__file__).resolve().parents[2]
+        proc = subprocess.run(
+            [sys.executable, "-m", "orchestrator.cli", "--help"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("usage: orchestrator", proc.stdout)
+        self.assertIn("run", proc.stdout)
 
     def test_cli_status_emits_json(self):
         fake_agents = [
@@ -761,7 +838,7 @@ class CliTests(unittest.TestCase):
                 return fake_agents
 
         stdout = io.StringIO()
-        with mock.patch("orchestrator.cli.DaemonClient", FakeDaemonClient):
+        with mock.patch(f"{cli_run.__module__}.DaemonClient", FakeDaemonClient):
             with contextlib.redirect_stdout(stdout):
                 exit_code = cli_run(["status", "--json"])
 
@@ -791,7 +868,7 @@ class CliTests(unittest.TestCase):
                 return fake_agents
 
         stdout = io.StringIO()
-        with mock.patch("orchestrator.cli.DaemonClient", FakeDaemonClient):
+        with mock.patch(f"{cli_run.__module__}.DaemonClient", FakeDaemonClient):
             with contextlib.redirect_stdout(stdout):
                 exit_code = cli_run(["status"])
 
@@ -809,7 +886,7 @@ class CliTests(unittest.TestCase):
                 self.available = False
 
         stderr = io.StringIO()
-        with mock.patch("orchestrator.cli.DaemonClient", FakeDaemonClient):
+        with mock.patch(f"{cli_run.__module__}.DaemonClient", FakeDaemonClient):
             with contextlib.redirect_stderr(stderr):
                 exit_code = cli_run(["status"])
 

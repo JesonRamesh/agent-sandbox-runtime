@@ -188,12 +188,19 @@ echo "  LSMs    : $(cat /sys/kernel/security/lsm 2>/dev/null || echo 'unknown')"
 
 echo
 if [ "$REBOOT_NEEDED" -eq 1 ]; then
-  printf "${YELLOW}${BOLD}╔════════════════════════════════════════════════════════════╗${NC}\n"
-  printf "${YELLOW}${BOLD}║  REBOOT REQUIRED                                           ║${NC}\n"
-  printf "${YELLOW}${BOLD}║  The kernel cmdline was updated to enable BPF LSM.         ║${NC}\n"
-  printf "${YELLOW}${BOLD}║  Run:  sudo reboot                                         ║${NC}\n"
-  printf "${YELLOW}${BOLD}║  Then verify: cat /sys/kernel/security/lsm | grep bpf      ║${NC}\n"
-  printf "${YELLOW}${BOLD}╚════════════════════════════════════════════════════════════╝${NC}\n"
+  printf "${YELLOW}${BOLD}╔════════════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${YELLOW}${BOLD}║  REBOOT REQUIRED                                              ║${NC}\n"
+  printf "${YELLOW}${BOLD}║  The kernel cmdline was updated to enable BPF LSM.            ║${NC}\n"
+  printf "${YELLOW}${BOLD}║                                                               ║${NC}\n"
+  printf "${YELLOW}${BOLD}║  1. Reboot now:                                               ║${NC}\n"
+  printf "${YELLOW}${BOLD}║       sudo reboot                                             ║${NC}\n"
+  printf "${YELLOW}${BOLD}║                                                               ║${NC}\n"
+  printf "${YELLOW}${BOLD}║  2. After reboot, verify BPF LSM is active:                   ║${NC}\n"
+  printf "${YELLOW}${BOLD}║       cat /sys/kernel/security/lsm | grep bpf && echo OK      ║${NC}\n"
+  printf "${YELLOW}${BOLD}║                                                               ║${NC}\n"
+  printf "${YELLOW}${BOLD}║  3. Then build the runtime:                                   ║${NC}\n"
+  printf "${YELLOW}${BOLD}║       make all                                                ║${NC}\n"
+  printf "${YELLOW}${BOLD}╚════════════════════════════════════════════════════════════════╝${NC}\n"
 else
   ok "Setup complete — you're ready to build and run the runtime."
 fi

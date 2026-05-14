@@ -188,7 +188,7 @@ def _run_scenario(args) -> int:
 
 def _validate_scenario(args) -> int:
     scenario = load_scenario(args.file)
-    manifests = _validate_referenced_manifests(scenario)
+    manifests, warnings = _validate_referenced_manifests(scenario)
     payload = {
         "ok": True,
         "scenario_name": scenario.name,
@@ -205,6 +205,7 @@ def _validate_scenario(args) -> int:
             }
             for agent, manifest in zip(scenario.agents, manifests)
         ],
+        "warnings": warnings,
     }
     _print_payload(payload, json_mode=args.json)
     return 0
@@ -234,9 +235,26 @@ def _status(args) -> int:
 
 def _validate_referenced_manifests(scenario):
     manifests = []
+    warnings = []
     for agent in scenario.agents:
-        manifests.append(agent.load_manifest())
-    return manifests
+        manifest = agent.load_manifest()
+        manifests.append(manifest)
+        for host in manifest.missing_provider_hosts():
+            provider = manifest.provider or manifest.base_url or "configured model endpoint"
+            warnings.append(
+                {
+                    "agent_id": agent.id,
+                    "manifest_name": manifest.name,
+                    "manifest_path": str(agent.manifest_path),
+                    "provider": provider,
+                    "host": host,
+                    "message": (
+                        f"agent '{agent.id}' provider '{provider}' needs '{host}' in "
+                        "allowed_hosts or the first LLM call will be kernel-blocked"
+                    ),
+                }
+            )
+    return manifests, warnings
 
 
 def _print_payload(payload: dict, *, json_mode: bool) -> None:
@@ -259,6 +277,8 @@ def _print_payload(payload: dict, *, json_mode: bool) -> None:
             f"with {len(payload['agents'])} agent(s)",
             flush=True,
         )
+        for warning in payload.get("warnings", []):
+            print(f"[validate] warning: {warning['message']}", flush=True)
         return
     print(
         f"[scenario] '{payload['scenario_name']}' finished status={payload['status']} "
