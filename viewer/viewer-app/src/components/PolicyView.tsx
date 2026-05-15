@@ -22,6 +22,9 @@ export default function PolicyView({ onCountChange }: PolicyViewProps) {
   const [search, setSearch]             = useState('');
 
   // ── Load policies from daemon ──────────────────────────────────────────
+  // Reused by the refresh button and after a save. Called from event handlers,
+  // so synchronous setState inside it is fine (the react-hooks rule only
+  // forbids it inside effect bodies).
   const load = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
@@ -42,7 +45,29 @@ export default function PolicyView({ onCountChange }: PolicyViewProps) {
     }
   }, [onCountChange]);
 
-  useEffect(() => { load(); }, [load]);
+  // Initial mount fetch — inlined (not `load()`) so the effect body has no
+  // synchronous setState; all setState calls happen after `await`.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await fetchPolicies();
+        if (cancelled) return;
+        const sorted = (data || []).sort((a, b) => a.id - b.id);
+        setPolicies(sorted);
+        onCountChange?.(sorted.length);
+      } catch (err) {
+        if (cancelled) return;
+        setFetchError(err instanceof Error ? err.message : String(err));
+        setPolicies(MOCK_POLICIES);
+        setUsingMock(true);
+        onCountChange?.(MOCK_POLICIES.length);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [onCountChange]);
 
   // ── Dialog handlers ───────────────────────────────────────────────────
   function openNew() {

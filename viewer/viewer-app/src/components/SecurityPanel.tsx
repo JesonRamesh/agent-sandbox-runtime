@@ -20,14 +20,16 @@ function secondsSince(ts: number | null | undefined): number | null {
 }
 
 export default function SecurityPanel({ analysis, lastTs }: Props) {
-  const [age, setAge] = useState<number | null>(() => secondsSince(lastTs));
-
+  // Tick counter drives re-renders so `age` (computed below) stays fresh.
+  // Storing age in state would force a synchronous setState inside the
+  // effect body to resync on `lastTs` change — disallowed by react-hooks.
+  const [, setTick] = useState(0);
   useEffect(() => {
-    setAge(secondsSince(lastTs));
     if (!lastTs) return;
-    const id = setInterval(() => setAge(secondsSince(lastTs)), 1000);
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(id);
   }, [lastTs]);
+  const age = secondsSince(lastTs);
 
   const level = analysis?.threatLevel || 'low';
 

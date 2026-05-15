@@ -41,7 +41,7 @@ export default function Sparkline({ llmEvents, kernelEvents }: Props) {
       };
       return next;
     });
-  }, [llmEvents.length, kernelEvents.length]);
+  }, [llmEvents, kernelEvents]);
 
   // Slide buckets left every 2s
   useEffect(() => {

@@ -86,8 +86,6 @@ export default function App() {
 
   // Cross-panel alert state — owned here so all three children can react.
   const [injectionAlert, setInjectionAlert] = useState<InjectionAlert | null>(null);
-  const [injectionTargets, setInjectionTargets] = useState<Set<number>>(() => new Set());
-  const [blockedPulseKey, setBlockedPulseKey] = useState<number>(0);
   const [latestAnalysis, setLatestAnalysis] = useState<SecurityAnalysis | null>(null);
   const [lastAnalysisTs, setLastAnalysisTs] = useState<number | null>(null);
   // 'events' | 'workflow' | 'policies'
@@ -195,12 +193,35 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  // React to new connect_blocked events: link to a tool_call, schedule the
-  // banner reveal + auto-dismiss, and bump the stats pulse key.
+  // `injectionTargets` is derivable from the event streams — `findInjectionTarget`
+  // is pure, so we compute it during render rather than accumulating into state
+  // (which would require a synchronous setState in an effect).
+  const injectionTargets = useMemo<Set<number>>(() => {
+    const targets = new Set<number>();
+    for (const ke of kernelEvents) {
+      if (!ke.type.endsWith('_blocked')) continue;
+      const matched = findInjectionTarget(ke, llmEvents);
+      if (matched !== null) targets.add(matched);
+    }
+    return targets;
+  }, [kernelEvents, llmEvents]);
+
+  // Counter that bumps once per blocked kernel event — drives the StatRings
+  // pulse animation. Derived from kernelEvents so we don't setState in an effect.
+  const blockedPulseKey = useMemo<number>(() => {
+    let count = 0;
+    for (const ke of kernelEvents) {
+      if (ke.type.endsWith('_blocked')) count += 1;
+    }
+    return count;
+  }, [kernelEvents]);
+
+  // React to new connect_blocked events: schedule the banner reveal +
+  // auto-dismiss and bump the stats pulse key. Target accumulation moved
+  // to the useMemo above so this effect only owns the side-effects.
   useEffect(() => {
     if (kernelEvents.length === 0) return;
     const handled = handledBlockedRef.current;
-    let toAdd: Set<number> | null = null; // ids to add to injectionTargets after the loop
     let lastAlert: InjectionAlert | null = null;
 
     for (const ke of kernelEvents) {
@@ -212,10 +233,6 @@ export default function App() {
       handled.add(ke._id);
 
       const matchedId = findInjectionTarget(ke, llmEvents);
-      if (matchedId !== null) {
-        if (!toAdd) toAdd = new Set();
-        toAdd.add(matchedId);
-      }
       lastAlert = {
         kernelId: ke._id,
         toolCallId: matchedId,
@@ -225,17 +242,6 @@ export default function App() {
     }
 
     if (!lastAlert) return;
-
-    if (toAdd) {
-      setInjectionTargets((prev) => {
-        const next = new Set(prev);
-        for (const id of toAdd) next.add(id);
-        return next;
-      });
-    }
-
-    // Stats pulse fires immediately — the counter changes the same tick.
-    setBlockedPulseKey((k) => k + 1);
 
     // Banner reveal is staged 300ms after the kernel row appears.
     clearBannerTimers();
@@ -260,11 +266,9 @@ export default function App() {
     return Array.from(names);
   }, [llmEvents, kernelEvents]);
 
-  useEffect(() => {
-    if (activeAgent === null && agents.length > 0) {
-      setActiveAgent(agents[0]);
-    }
-  }, [agents, activeAgent]);
+  // Default to the first agent until the user picks one explicitly. Derived
+  // rather than synced via setState so we don't run setState in an effect.
+  const effectiveActiveAgent = activeAgent ?? agents[0] ?? null;
 
   const stats = useMemo(() => {
     let toolCalls = 0;
@@ -281,11 +285,11 @@ export default function App() {
     return { toolCalls, allowed, blocked, uptime };
   }, [llmEvents, kernelEvents, uptime]);
 
-  const filteredLlm = activeAgent
-    ? llmEvents.filter((e) => e.agent === activeAgent)
+  const filteredLlm = effectiveActiveAgent
+    ? llmEvents.filter((e) => e.agent === effectiveActiveAgent)
     : llmEvents;
-  const filteredKernel = activeAgent
-    ? kernelEvents.filter((e) => e.agent === activeAgent)
+  const filteredKernel = effectiveActiveAgent
+    ? kernelEvents.filter((e) => e.agent === effectiveActiveAgent)
     : kernelEvents;
 
   // The workflow components (UnifiedFlowLayer / AgentFlowLayer /
@@ -315,7 +319,7 @@ export default function App() {
       <div className="app__body">
         <Sidebar
           agents={agents}
-          activeAgent={activeAgent}
+          activeAgent={effectiveActiveAgent}
           onSelectAgent={setActiveAgent}
           llmEvents={llmEvents}
           kernelEvents={kernelEvents}
