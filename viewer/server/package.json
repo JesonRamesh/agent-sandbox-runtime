@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "description": "P5 viewer relay — forwards events from P2/P4 senders to browser viewers over WebSocket",
-  "main": "server.js",
+  "main": "server.ts",
   "scripts": {
-    "start": "node server.js",
-    "start:mock": "MOCK_EVENTS=1 node server.js",
-    "start:full": "SERVE_STATIC=1 node server.js"
+    "start": "tsx server.ts",
+    "start:mock": "MOCK_EVENTS=1 tsx server.ts",
+    "start:full": "SERVE_STATIC=1 tsx server.ts",
+    "test": "tsx --test *.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=18"
@@ -15,5 +17,12 @@
   "dependencies": {
     "openai": "^6.35.0",
     "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.0",
+    "tsx": "^4.22.0",
+    "typescript": "^6.0.3"
   }
 }

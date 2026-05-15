@@ -36,6 +36,10 @@ __pycache__/
 viewer/server/node_modules/
 viewer/viewer-app/node_modules/
 viewer/viewer-app/dist/
+viewer/static/main.js
+
+# tsc --incremental cache; per-checkout build state
+*.tsbuildinfo
 
 # --- Vendored upstream (kept out of the tree) -----------------------
 vendor/tetragon/
